@@ -6,8 +6,8 @@ from .serializers import ProductListSerializer, ProductCreateSerializer
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.select_related('brand', 'category', 'supplier', 'currency', 'stock').all()
     filterset_fields = ['brand', 'category', 'gender', 'supplier']
-    search_fields = ['sku', 'barcode', 'model', 'color']
-    ordering_fields = ['created_at', 'suggested_selling_price', 'model']
+    search_fields = ['sku', 'barcode', 'model_name', 'color']
+    ordering_fields = ['created_at', 'suggested_selling_price', 'model_name']
     ordering = ['-created_at']
 
     def get_serializer_class(self):
