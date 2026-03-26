@@ -32,13 +32,41 @@ class Product(models.Model):
     customs_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     shipping_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
-    suggested_selling_price = models.DecimalField(max_digits=12, decimal_places=2)
-    min_alert_quantity = models.IntegerField(default=0)
-    location = models.CharField(max_length=200, blank=True, null=True)  # مكان التخزين
+    suggested_selling_price = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="سعر البيع المقترح")
+    min_alert_quantity = models.IntegerField(default=5, verbose_name="حد التنبيه")
+    can_be_oversold = models.BooleanField(default=False, verbose_name="يسمح بالبيع بدون رصيد")
+    image = models.ImageField(upload_to='products/', blank=True, null=True, verbose_name="صورة المنتج")
+    location = models.CharField(max_length=200, blank=True, null=True, verbose_name="المكان في المخزن")
     supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name='products')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        # FIXME: الصور الكبيرة ممكن تبطأ التحميل، بنصغرها قبل الحفظ
+        if self.image:
+            from PIL import Image
+            import io
+            from django.core.files.base import ContentFile
+            
+            # فتح الصورة
+            img = Image.open(self.image)
+            # لو الحجم أكبر من 800 بكسل بنصغره
+            if img.height > 800 or img.width > 800:
+                output_size = (800, 800)
+                img.thumbnail(output_size)
+                
+                img_io = io.BytesIO()
+                # نسيفها بصيغة JPEG بجودة 85% لتقليل الحجم
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                img.save(img_io, format='JPEG', quality=85)
+                
+                # نغير الامتداد ل .jpg
+                new_name = self.image.name.split('.')[0] + '.jpg'
+                self.image.save(new_name, ContentFile(img_io.getvalue()), save=False)
+
+        super().save(*args, **kwargs)
 
     # FIXME: لو المنتج ليه ألوان/مقاسات كتير
     # المفروض نعمل ProductVariant model منفصل

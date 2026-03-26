@@ -21,7 +21,14 @@ class ProductListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Product
-        fields = '__all__'
+        fields = [
+            'id', 'sku', 'barcode', 'brand', 'brand_name', 'category', 'category_name',
+            'model_name', 'model', 'gender', 'size', 'color', 'description', 
+            'cost_foreign', 'currency', 'currency_code', 'customs_cost', 'shipping_cost',
+            'suggested_selling_price', 'total_cost', 'expected_profit',
+            'current_quantity', 'min_alert_quantity', 'is_low_stock', 
+            'can_be_oversold', 'image', 'supplier', 'supplier_name', 'location'
+        ]
 
 class ProductCreateSerializer(serializers.ModelSerializer):
     initial_quantity = serializers.IntegerField(write_only=True, required=False, default=0)

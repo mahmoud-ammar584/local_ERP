@@ -30,6 +30,21 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
         model = SalesTransaction
         exclude = ['total_amount_before_tax', 'total_tax', 'final_amount', 'created_at', 'updated_at']
 
+    def validate(self, data):
+        items_data = data.get('items', [])
+        for item in items_data:
+            product = item['product']
+            qty_sold = item['quantity_sold']
+            
+            # لو الحقل ده مش متفعل، لازم نتأكد من وجود كمية كافية
+            if not product.can_be_oversold:
+                current_stock = product.stock.current_quantity
+                if qty_sold > current_stock:
+                    raise serializers.ValidationError({
+                        'items': f'الكمية المطلوبة للمنتج {product.sku} ({qty_sold}) أكبر من الكمية المتاحة ({current_stock}).'
+                    })
+        return data
+
     def create(self, validated_data):
         items_data = validated_data.pop('items')
         transaction = SalesTransaction.objects.create(**validated_data)
