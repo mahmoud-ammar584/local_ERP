@@ -5,9 +5,9 @@ from apps.inventory.tasks import update_stock_async
 from apps.core.utils import log_activity
 
 class SalesItemSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source='product.__str__', read_only=True)
-    product_sku = serializers.CharField(source='product.sku', read_only=True)
-    product_image_url = serializers.CharField(source='product.image_url', read_only=True)
+    product_name = serializers.SerializerMethodField()
+    product_sku = serializers.SerializerMethodField()
+    product_image_url = serializers.SerializerMethodField()
     item_total_before_tax = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
     item_tax = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
     item_total_after_tax = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
@@ -17,6 +17,25 @@ class SalesItemSerializer(serializers.ModelSerializer):
         model = SalesItem
         fields = '__all__'
         read_only_fields = ['sales_transaction']
+
+    def _get_product(self, obj):
+        if getattr(obj, 'product_id', None):
+            return obj.product
+        if getattr(obj, 'variant_id', None):
+            return obj.variant.product
+        return None
+
+    def get_product_name(self, obj):
+        p = self._get_product(obj)
+        return str(p) if p else None
+
+    def get_product_sku(self, obj):
+        p = self._get_product(obj)
+        return getattr(p, 'sku', None) if p else None
+
+    def get_product_image_url(self, obj):
+        p = self._get_product(obj)
+        return getattr(p, 'image_url', None) if p else None
 
 class SalesTransactionSerializer(serializers.ModelSerializer):
     items = SalesItemSerializer(many=True, read_only=True)
@@ -38,15 +57,22 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
     def validate(self, data):
         items_data = data.get('items', [])
         for item in items_data:
-            product = item['product']
+            product = item.get('product')
+            variant = item.get('variant')
             qty_sold = item['quantity_sold']
             
-            # لو الحقل ده مش متفعل، لازم نتأكد من وجود كمية كافية
-            if not product.can_be_oversold:
-                current_stock = product.stock.current_quantity
+            # If this flag is not enabled, we must ensure sufficient quantity is available.
+            # Stock is tracked at variant level; for backward compatibility,
+            # a product can be provided and will resolve to its first active variant.
+            target_variant = variant
+            if not target_variant and product:
+                target_variant = product.variants.filter(is_active=True).order_by('id').first()
+
+            if product and not product.can_be_oversold and target_variant:
+                current_stock = getattr(getattr(target_variant, 'stock', None), 'current_quantity', 0)
                 if qty_sold > current_stock:
                     raise serializers.ValidationError({
-                        'items': f'الكمية المطلوبة للمنتج {product.sku} ({qty_sold}) أكبر من الكمية المتاحة ({current_stock}).'
+                        'items': f'Requested quantity for product {product.sku} ({qty_sold}) is greater than available stock ({current_stock}).'
                     })
         return data
 
@@ -57,7 +83,11 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
         for item_data in items_data:
             SalesItem.objects.create(sales_transaction=transaction, **item_data)
             # --- ASYNC STOCK UPDATE (Phase 9) ---
-            update_stock_async(item_data['product'].id, -item_data['quantity_sold'])
+            variant = item_data.get('variant')
+            if not variant and item_data.get('product'):
+                variant = item_data['product'].variants.filter(is_active=True).order_by('id').first()
+            if variant:
+                update_stock_async(variant.id, -item_data['quantity_sold'])
 
         transaction.recalculate()
 

@@ -2,9 +2,9 @@ from django.db import models
 from django.contrib.auth.models import User
 
 class UserActivity(models.Model):
-    """سجل النشاطات - لمعرفة مين عمل إيه وإمتى"""
+    """Activity log - tracks user actions for audit trails"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='activities')
-    action = models.CharField(max_length=255) # وصف للنشاط
+    action = models.CharField(max_length=255)  # Action description
     model_name = models.CharField(max_length=100, blank=True, null=True)
     object_id = models.IntegerField(blank=True, null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
@@ -18,7 +18,7 @@ class UserActivity(models.Model):
         return f"{self.user.username} - {self.action} at {self.timestamp}"
 
 class TransactionStatus(models.Model):
-    """حالة العمليات غير المتزامنة (Async Tasks)"""
+    """Status tracker for asynchronous operations (Async Tasks)"""
     STATUS_CHOICES = [
         ('P', 'Processing'),
         ('C', 'Completed'),

@@ -7,7 +7,12 @@ from apps.inventory.tasks import update_stock_async
 from apps.core.utils import log_activity
 
 class PurchaseOrderViewSet(viewsets.ModelViewSet):
-    queryset = PurchaseOrder.objects.select_related('supplier', 'currency').prefetch_related('items__product').all()
+    queryset = (
+        PurchaseOrder.objects
+        .select_related('supplier', 'currency')
+        .prefetch_related('items__variant', 'items__variant__product')
+        .all()
+    )
     filterset_fields = ['status', 'supplier']
     ordering = ['-created_at']
 
@@ -33,7 +38,8 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             item.received_quantity += qty
             item.save()
             # --- ASYNC STOCK UPDATE (Phase 9) ---
-            update_stock_async(item.product.id, qty)
+            if item.variant_id:
+                update_stock_async(item.variant_id, qty)
 
         all_received = all(i.received_quantity >= i.ordered_quantity for i in order.items.all())
         any_received = any(i.received_quantity > 0 for i in order.items.all())

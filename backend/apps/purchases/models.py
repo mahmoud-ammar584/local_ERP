@@ -1,6 +1,6 @@
 from django.db import models
 from apps.settings_app.models import Supplier, Currency
-from apps.inventory.models import Product
+from apps.inventory.models import Product, ProductVariant
 from apps.inventory.tasks import update_stock_async
 
 class PurchaseOrder(models.Model):
@@ -27,24 +27,26 @@ class PurchaseOrder(models.Model):
         self.save(update_fields=['total_amount_foreign'])
 
     def receive_all(self):
-        """تنبيه: الاستلام التلقائي لكل الأصناف في الطلب"""
+        """Warning: Automatic receipt of all items in the order."""
         for item in self.items.all():
             qty_to_receive = item.ordered_quantity - item.received_quantity
             if qty_to_receive > 0:
                 item.received_quantity += qty_to_receive
                 item.save()
                 # --- ASYNC STOCK UPDATE (Phase 9) ---
-                update_stock_async(item.product.id, qty_to_receive)
+                update_stock_async(item.variant.id, qty_to_receive)
 
     def __str__(self):
         return f'PO-{self.id} ({self.supplier.name})'
 
 class PurchaseOrderItem(models.Model):
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='items')
-    product = models.ForeignKey(Product, on_delete=models.PROTECT)
+    variant = models.ForeignKey(ProductVariant, on_delete=models.PROTECT, null=True, blank=True)
     ordered_quantity = models.IntegerField()
     received_quantity = models.IntegerField(default=0)
     unit_cost_foreign = models.DecimalField(max_digits=12, decimal_places=2)
 
     def __str__(self):
-        return f'{self.product.sku} x {self.ordered_quantity}'
+        if not self.variant_id:
+            return f'Item x {self.ordered_quantity}'
+        return f'{self.variant.full_sku} x {self.ordered_quantity}'

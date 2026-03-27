@@ -24,7 +24,7 @@ export default function CustomersPage() {
 
   const saveMutation = useMutation({
     mutationFn: (data) => {
-      setStatus('جاري الحفظ...');
+      setStatus('Saving...');
       const payload = {
         name: data.name,
         phone: data.phone || null,
@@ -36,13 +36,13 @@ export default function CustomersPage() {
       return editing ? api.put(`/customers/${editing.id}/`, payload) : api.post('/customers/', payload);
     },
     onSuccess: () => { 
-      setStatus('تم الحفظ بنجاح!');
+      setStatus('Saved successfully!');
       queryClient.invalidateQueries(['customers']); 
       setTimeout(closeModal, 1000);
     },
     onError: (err) => {
       const msg = err.response?.data ? JSON.stringify(err.response.data) : err.message;
-      setStatus(`خطأ: ${msg}`);
+      setStatus(`Error: ${msg}`);
       console.error(err);
     }
   });
@@ -71,27 +71,27 @@ export default function CustomersPage() {
 
   // ... rest of the component
 
-  const fmt = (n) => Number(n || 0).toLocaleString('ar-EG', { maximumFractionDigits: 0 });
+  const fmt = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
   const customers = data?.results || data || [];
 
   return (
     <AppShell>
       <div className="page-header">
-        <h1 className="page-title">العملاء</h1>
+        <h1 className="page-title">Customers</h1>
         <button className="btn-primary" onClick={openAdd} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <HiOutlinePlus size={18} /> إضافة عميل
+          <HiOutlinePlus size={18} /> Add customer
         </button>
       </div>
 
       <div style={{ marginBottom: '1rem', maxWidth: '400px' }}>
-        <input placeholder="بحث بالاسم أو الهاتف..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+        <input placeholder="Search by name or phone..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
       </div>
 
       {isLoading ? <div className="loading-spinner" /> : (
         <div className="card" style={{ padding: 0, overflow: 'auto' }}>
           <table>
             <thead>
-              <tr><th>الاسم</th><th>الهاتف</th><th>النوع</th><th>إجمالي المشتريات</th><th>إجمالي الربح</th><th>آخر شراء</th><th>إجراءات</th></tr>
+              <tr><th>Name</th><th>Phone</th><th>Type</th><th>Total purchases</th><th>Total profit</th><th>Last purchase</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {customers.map(c => (
@@ -99,13 +99,13 @@ export default function CustomersPage() {
                   <td style={{ fontWeight: 600 }}>{c.name}</td>
                   <td style={{ direction: 'ltr', textAlign: 'right' }}>{c.phone || '—'}</td>
                   <td><span className="badge badge-warning">{c.customer_type_name}</span></td>
-                  <td>{fmt(c.total_purchases)} ج.م</td>
-                  <td style={{ color: 'var(--accent-green)' }}>{fmt(c.total_profit)} ج.م</td>
-                  <td>{c.last_purchase_date ? new Date(c.last_purchase_date).toLocaleDateString('ar-EG') : '—'}</td>
+                  <td>{fmt(c.total_purchases)} EGP</td>
+                  <td style={{ color: 'var(--accent-green)' }}>{fmt(c.total_profit)} EGP</td>
+                  <td>{c.last_purchase_date ? new Date(c.last_purchase_date).toLocaleDateString('en-US') : '—'}</td>
                   <td>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <button onClick={() => openEdit(c)} style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer' }}><HiOutlinePencil size={18} /></button>
-                      <button onClick={() => { if (confirm('هل أنت متأكد؟')) deleteMutation.mutate(c.id); }} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer' }}><HiOutlineTrash size={18} /></button>
+                      <button onClick={() => { if (confirm('Are you sure?')) deleteMutation.mutate(c.id); }} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer' }}><HiOutlineTrash size={18} /></button>
                     </div>
                   </td>
                 </tr>
@@ -115,29 +115,29 @@ export default function CustomersPage() {
         </div>
       )}
 
-      <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'تعديل عميل' : 'إضافة عميل جديد'}>
+      <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'Edit customer' : 'Add new customer'}>
         <form onSubmit={e => { e.preventDefault(); saveMutation.mutate(form); }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div className="form-group"><label className="form-label">الاسم *</label><input required value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-            <div className="form-group"><label className="form-label">الهاتف</label><input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></div>
-            <div className="form-group"><label className="form-label">البريد الإلكتروني</label><input type="email" value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+            <div className="form-group"><label className="form-label">Name *</label><input required value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+            <div className="form-group"><label className="form-label">Phone</label><input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></div>
+            <div className="form-group"><label className="form-label">Email</label><input type="email" value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
             <div className="form-group">
-              <label className="form-label">نوع العميل *</label>
+              <label className="form-label">Customer type *</label>
               <select required value={form.customer_type || ''} onChange={e => setForm({ ...form, customer_type: e.target.value })}>
-                <option value="">اختر</option>
+                <option value="">Select</option>
                 {(customerTypes?.results || customerTypes || []).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
-            <div className="form-group" style={{ gridColumn: 'span 2' }}><label className="form-label">العنوان</label><textarea value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} rows={2} /></div>
-            <div className="form-group" style={{ gridColumn: 'span 2' }}><label className="form-label">ملاحظات</label><textarea value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
+            <div className="form-group" style={{ gridColumn: 'span 2' }}><label className="form-label">Address</label><textarea value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} rows={2} /></div>
+            <div className="form-group" style={{ gridColumn: 'span 2' }}><label className="form-label">Notes</label><textarea value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
           </div>
           {status && (
             <div style={{ 
               marginTop: '1rem', 
               padding: '0.75rem', 
               borderRadius: '8px', 
-              background: status.startsWith('خطأ') ? 'rgba(231, 76, 60, 0.1)' : 'rgba(46, 204, 113, 0.1)',
-              color: status.startsWith('خطأ') ? 'var(--accent-red)' : 'var(--accent-green)',
+              background: status.startsWith('Error') ? 'rgba(231, 76, 60, 0.1)' : 'rgba(46, 204, 113, 0.1)',
+              color: status.startsWith('Error') ? 'var(--accent-red)' : 'var(--accent-green)',
               fontSize: '0.9rem',
               textAlign: 'center'
             }}>
@@ -145,8 +145,8 @@ export default function CustomersPage() {
             </div>
           )}
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
-            <button type="submit" className="btn-primary" disabled={saveMutation.isPending}>حفظ</button>
-            <button type="button" className="btn-secondary" onClick={closeModal}>إلغاء</button>
+            <button type="submit" className="btn-primary" disabled={saveMutation.isPending}>Save</button>
+            <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
           </div>
         </form>
       </Modal>

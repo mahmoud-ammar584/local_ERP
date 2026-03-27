@@ -2,6 +2,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, createContext, useContext, useEffect } from 'react';
 import { api } from '@/lib/api';
+import { LanguageProvider } from '@/contexts/LanguageContext';
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -64,7 +65,9 @@ export function Providers({ children }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>{children}</AuthProvider>
+      <LanguageProvider>
+        <AuthProvider>{children}</AuthProvider>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }

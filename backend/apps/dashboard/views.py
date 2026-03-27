@@ -46,12 +46,13 @@ def summary(request):
     # Inventory stats
     low_stock_count = 0
     total_inventory_value = 0
-    for product in Product.objects.select_related('stock', 'currency').all():
+    from apps.inventory.models import ProductVariant # Import inside to avoid circular deps if any
+    for variant in ProductVariant.objects.select_related('product', 'stock', 'product__currency').all():
         try:
-            qty = product.stock.current_quantity
-            if qty <= product.min_alert_quantity:
+            qty = variant.stock.current_quantity
+            if qty <= variant.product.min_alert_quantity:
                 low_stock_count += 1
-            total_inventory_value += product.total_cost * qty
+            total_inventory_value += variant.product.total_cost * qty
         except Stock.DoesNotExist:
             low_stock_count += 1
 
@@ -106,7 +107,7 @@ def top_products(request):
     data = (
         SalesItem.objects
         .filter(sales_transaction__transaction_date__range=[start, end])
-        .values('product__sku', 'product__model_name', 'product__brand__name')
+        .values('variant__product__model_name', 'variant__product__brand__name')
         .annotate(
             total_qty=Sum('quantity_sold'),
             total_revenue=Sum(F('unit_price') * F('quantity_sold'), output_field=DecimalField())

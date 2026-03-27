@@ -27,26 +27,26 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='product',
             name='can_be_oversold',
-            field=models.BooleanField(default=False, verbose_name='يسمح بالبيع بدون رصيد'),
+            field=models.BooleanField(default=False, verbose_name='Allow Overselling'),
         ),
         migrations.AddField(
             model_name='product',
             name='image',
-            field=models.ImageField(blank=True, null=True, upload_to='products/', verbose_name='صورة المنتج'),
+            field=models.ImageField(blank=True, null=True, upload_to='products/', verbose_name='Product Image'),
         ),
         migrations.AlterField(
             model_name='product',
             name='location',
-            field=models.CharField(blank=True, max_length=200, null=True, verbose_name='المكان في المخزن'),
+            field=models.CharField(blank=True, max_length=200, null=True, verbose_name='Warehouse Location'),
         ),
         migrations.AlterField(
             model_name='product',
             name='min_alert_quantity',
-            field=models.IntegerField(default=5, verbose_name='حد التنبيه'),
+            field=models.IntegerField(default=5, verbose_name='Low Stock Threshold'),
         ),
         migrations.AlterField(
             model_name='product',
             name='suggested_selling_price',
-            field=models.DecimalField(decimal_places=2, max_digits=12, verbose_name='سعر البيع المقترح'),
+            field=models.DecimalField(decimal_places=2, max_digits=12, verbose_name='Suggested Selling Price'),
         ),
     ]

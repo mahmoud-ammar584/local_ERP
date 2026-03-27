@@ -1,105 +1,82 @@
 from django.db import models
 from apps.settings_app.models import Brand, Category, Currency, Supplier
+from django.utils import timezone
 
 
 class Product(models.Model):
     """
-    المنتج الفاخر - الجدول الأساسي في النظام
-    كل منتج ليه SKU فريد وممكن barcode كمان
-    التكلفة بتتحسب من العملة الأجنبية + الجمارك + الشحن
+    Luxury Product - The core table in the system.
+    Each product has a unique SKU and optional barcode.
+    Cost is calculated from foreign currency + customs + shipping.
     """
-    GENDER_CHOICES = [('M', 'Male'), ('F', 'Female'), ('U', 'Unisex')]
-
-    sku = models.CharField(max_length=100, unique=True)
-    barcode = models.CharField(max_length=100, unique=True, blank=True, null=True)
     brand = models.ForeignKey(Brand, on_delete=models.PROTECT, related_name='products')
     category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name='products')
+    season = models.ForeignKey(
+        'settings_app.Season',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='products'
+    )
 
-    # سميناه model مش product_name عشان في الفاشن بيقولوا "model"
-    # مثلاً: "GG Marmont Bag" أو "Monolith Boots"
+    sku = models.CharField(
+        max_length=100,
+        help_text="Base SKU for the product. Variants append sku_suffix to build full SKU."
+    )
+
+    # Named 'model_name' instead of 'product_name' following fashion industry conventions.
+    # e.g.: "GG Marmont Bag" or "Monolith Boots"
     model_name = models.CharField(max_length=200, db_column='model')
 
-    gender = models.CharField(max_length=1, choices=GENDER_CHOICES, default='U')
-    size = models.CharField(max_length=50)
-    color = models.CharField(max_length=100)
+    # Variant-specific attributes (size/color/gender) live on ProductVariant.
     description = models.TextField(blank=True, null=True)
     image_url = models.URLField(blank=True, null=True)
 
-    # --- تكلفة الشراء ---
-    # cost_foreign = التكلفة بالعملة الأجنبية (اللي بندفعها للمورد)
+    # --- Acquisition Cost ---
+    # cost_foreign = Cost in foreign currency (paid to supplier)
     cost_foreign = models.DecimalField(max_digits=12, decimal_places=2)
     currency = models.ForeignKey(Currency, on_delete=models.PROTECT)
     customs_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     shipping_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
-    suggested_selling_price = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="سعر البيع المقترح", blank=True, null=True)
-    profit_margin_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name="هامش الربح (%)")
-    min_alert_quantity = models.IntegerField(default=5, verbose_name="حد التنبيه")
-    can_be_oversold = models.BooleanField(default=False, verbose_name="يسمح بالبيع بدون رصيد")
-    image = models.ImageField(upload_to='products/', blank=True, null=True, verbose_name="صورة المنتج")
-    location = models.CharField(max_length=200, blank=True, null=True, verbose_name="المكان في المخزن")
+    suggested_selling_price = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="Suggested Selling Price", blank=True, null=True)
+    profit_margin_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name="Profit Margin (%)")
+    min_alert_quantity = models.IntegerField(default=5, verbose_name="Low Stock Threshold")
+    can_be_oversold = models.BooleanField(default=False, verbose_name="Allow Overselling")
+    location = models.CharField(max_length=200, blank=True, null=True, verbose_name="Warehouse Location")
     supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name='products')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-        # FIXME: الصور الكبيرة ممكن تبطأ التحميل، بنصغرها قبل الحفظ
-        if self.image:
-            from PIL import Image
-            import io
-            from django.core.files.base import ContentFile
-            
-            # فتح الصورة
-            img = Image.open(self.image)
-            # لو الحجم أكبر من 800 بكسل بنصغره
-            if img.height > 800 or img.width > 800:
-                output_size = (800, 800)
-                img.thumbnail(output_size)
-                
-                img_io = io.BytesIO()
-                # نسيفها بصيغة JPEG بجودة 85% لتقليل الحجم
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
-                img.save(img_io, format='JPEG', quality=85)
-                
-                # نغير الامتداد ل .jpg
-                new_name = self.image.name.split('.')[0] + '.jpg'
-                self.image.save(new_name, ContentFile(img_io.getvalue()), save=False)
-
-        # --- حساب سعر البيع تلقائياً ---
-        # لو مفيش سعر بيع محدد أو لو هامش الربح اتغير، بنحسب السعر
+        # --- Automatic Selling Price Calculation ---
+        # Recalculate if suggested_selling_price is null or profit_margin_percentage is set.
         if not self.suggested_selling_price or self.profit_margin_percentage > 0:
-            # بنحسب التكلفة الإجمالية الأول (من الـ properties)
-            # بس الـ properties بتحتاج أحياناً يكون الـ user_id أو الـ currency موجودين
-            # هنا بنحسبها يدوي للتأكيد
+            # Calculate total cost first (from manual logic for certainty during save)
             cost_local = self.cost_foreign * self.currency.exchange_rate_to_base
             total_cost = cost_local + self.customs_cost + self.shipping_cost
             
-            # لو المستخدم ما حددش سعر، بنطبق الهامش
-            # أو لو الهامش أكبر من 0 بنحدث السعر بناء عليه (أولوية للهامش لو موجود)
+            # Apply margin if no explicit price is set, or if margin is > 0 (priority to margin if exists)
             if not self.suggested_selling_price or self._state.adding or 'profit_margin_percentage' in kwargs.get('update_fields', []):
                  self.suggested_selling_price = total_cost * (1 + self.profit_margin_percentage / 100)
 
         super().save(*args, **kwargs)
 
-    # FIXME: لو المنتج ليه ألوان/مقاسات كتير
-    # المفروض نعمل ProductVariant model منفصل
-    # بس حالياً كل لون/مقاس = record منفصل وده بيشتغل
+    # NOTE: Stock is tracked at the variant level via ProductVariant + Stock.
 
     @property
     def cost_local(self):
-        """التكلفة بالجنيه المصري = التكلفة بالعملة × سعر الصرف"""
+        """Local cost in EGP = Foreign cost × Exchange Rate"""
         return self.cost_foreign * self.currency.exchange_rate_to_base
 
     @property
     def total_cost(self):
-        """التكلفة الكاملة شاملة الجمارك والشحن"""
+        """Total landed cost including customs and shipping"""
         return self.cost_local + self.customs_cost + self.shipping_cost
 
     @property
     def expected_profit(self):
-        """الربح المتوقع = سعر البيع - إجمالي التكلفة"""
+        """Expected Profit = Selling Price - Total COGS"""
         if self.suggested_selling_price is None:
             return 0
         return self.suggested_selling_price - self.total_cost
@@ -107,33 +84,77 @@ class Product(models.Model):
     @property
     def is_low_stock(self):
         """
-        هل المخزون تحت الحد الأدنى؟
-        لو مفيش Stock record أصلاً يبقى low stock برضو
+        Check if any variant is below threshold.
         """
-        try:
-            return self.stock.current_quantity <= self.min_alert_quantity
-        except Stock.DoesNotExist:
-            return True
+        return any(v.is_low_stock for v in self.variants.all())
 
     def __str__(self):
-        return f'{self.brand.name} - {self.model_name} ({self.sku})'
+        return f'{self.brand.name} - {self.model_name}'
 
     class Meta:
         ordering = ['-created_at']
 
 
+class ProductVariant(models.Model):
+    """
+    Represents a specific variant of a product (size + color combination).
+    Each variant has its own stock record and can override the base price.
+    Example: GG Marmont Bag — Black — Size M
+    """
+    GENDER_CHOICES = [('M', 'Male'), ('F', 'Female'), ('U', 'Unisex')]
+
+    product = models.ForeignKey(
+        Product, on_delete=models.CASCADE, related_name='variants'
+    )
+    sku_suffix = models.CharField(
+        max_length=50,
+        default='',
+        help_text="Appended to product SKU. e.g. '-BLK-M' → full SKU: 'GG-001-BLK-M'"
+    )
+    color = models.CharField(max_length=100)
+    size = models.CharField(max_length=50)
+    gender = models.CharField(max_length=1, choices=GENDER_CHOICES, default='U')
+    price_override = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="If set, overrides product's suggested_selling_price for this variant"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    @property
+    def full_sku(self):
+        return f"{self.product.sku}{self.sku_suffix}"
+
+    @property
+    def effective_price(self):
+        return self.price_override or self.product.suggested_selling_price
+
+    @property
+    def is_low_stock(self):
+        try:
+            return self.stock.current_quantity <= self.product.min_alert_quantity
+        except Stock.DoesNotExist:
+            return True
+
+    def __str__(self):
+        return f"{self.product.sku} — {self.color} / {self.size}"
+
+    class Meta:
+        unique_together = [('product', 'sku_suffix')]
+        ordering = ['product', 'color', 'size']
+
+
 class Stock(models.Model):
     """
-    المخزون الحالي لكل منتج
-    OneToOne عشان كل منتج ليه record واحد بس
-    current_quantity بيتحدث تلقائي مع البيع والشراء
+    Current inventory levels for each specific variant.
+    OneToOne relationship ensures one stock record per variant.
     """
-    product = models.OneToOneField(Product, on_delete=models.CASCADE, related_name='stock')
+    variant = models.OneToOneField(ProductVariant, on_delete=models.CASCADE, related_name='stock')
     current_quantity = models.IntegerField(default=0)
     last_updated = models.DateTimeField(auto_now=True)
 
-    # TODO: إضافة حقل reserved_quantity
-    # للكميات المحجوزة في طلبات لسه ما اتشحنتش
+    # TODO: Add 'reserved_quantity' field
+    # For quantities allocated to orders not yet shipped.
 
     def __str__(self):
-        return f'{self.product.sku}: {self.current_quantity}'
+        return f'{self.variant.full_sku}: {self.current_quantity}'

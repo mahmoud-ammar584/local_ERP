@@ -1,19 +1,19 @@
 from background_task import background
 from django.db import transaction
-from .models import Product, Stock
+from .models import ProductVariant, Stock
 
 @background(schedule=0)
-def update_stock_async(product_id, quantity_change):
+def update_stock_async(variant_id, quantity_change):
     """
-    تحديث المخزون في الخلفية لتجنب بطء العمليات الأساسية
-    quantity_change: ممكن يكون موجب (مشتريات) أو سالب (مبيعات)
+    Update stock in the background to prevent UI blocking.
+    quantity_change: can be positive (purchases) or negative (sales).
     """
     with transaction.atomic():
         try:
-            product = Product.objects.get(id=product_id)
-            stock, created = Stock.objects.get_or_create(product=product)
+            variant = ProductVariant.objects.select_related('product').get(id=variant_id)
+            stock, created = Stock.objects.get_or_create(variant=variant)
             stock.current_quantity += quantity_change
             stock.save()
-            print(f"Async Stock Update: Product {product.sku} updated by {quantity_change}. New total: {stock.current_quantity}")
-        except Product.DoesNotExist:
-            print(f"Async Stock Error: Product {product_id} not found")
+            print(f"Async Stock Update: Variant {variant.full_sku} updated by {quantity_change}. New total: {stock.current_quantity}")
+        except ProductVariant.DoesNotExist:
+            print(f"Async Stock Error: Variant {variant_id} not found")

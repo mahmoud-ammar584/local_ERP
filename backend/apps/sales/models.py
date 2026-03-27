@@ -2,7 +2,7 @@ from django.db import models
 from decimal import Decimal
 from apps.customers.models import Customer
 from apps.settings_app.models import PaymentMethod, TaxRate
-from apps.inventory.models import Product
+from apps.inventory.models import Product, ProductVariant
 
 class SalesTransaction(models.Model):
     transaction_date = models.DateTimeField()
@@ -33,11 +33,24 @@ class SalesTransaction(models.Model):
 
 class SalesItem(models.Model):
     sales_transaction = models.ForeignKey(SalesTransaction, on_delete=models.CASCADE, related_name='items')
-    product = models.ForeignKey(Product, on_delete=models.PROTECT)
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, null=True, blank=True)
+    variant = models.ForeignKey(ProductVariant, on_delete=models.PROTECT, null=True, blank=True)
     quantity_sold = models.IntegerField()
     unit_price = models.DecimalField(max_digits=12, decimal_places=2)
     item_discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     tax_rate = models.ForeignKey(TaxRate, on_delete=models.PROTECT)
+
+    def save(self, *args, **kwargs):
+        # Backward compatibility: if a product is provided but no variant is set,
+        # attach the first active variant (common for single-variant products).
+        if self.product_id and not self.variant_id:
+            self.variant = (
+                ProductVariant.objects
+                .filter(product_id=self.product_id, is_active=True)
+                .order_by('id')
+                .first()
+            )
+        super().save(*args, **kwargs)
 
     @property
     def item_total_before_tax(self):
@@ -53,7 +66,16 @@ class SalesItem(models.Model):
 
     @property
     def profit_per_item(self):
-        return (self.unit_price * (1 - self.item_discount_percentage / Decimal('100'))) - self.product.total_cost
+        base = self.unit_price * (1 - self.item_discount_percentage / Decimal('100'))
+        if self.variant_id:
+            return base - self.variant.product.total_cost
+        if self.product_id:
+            return base - self.product.total_cost
+        return base
 
     def __str__(self):
-        return f'{self.product.sku} x {self.quantity_sold}'
+        if self.variant_id:
+            return f'{self.variant.full_sku} x {self.quantity_sold}'
+        if self.product_id:
+            return f'{self.product.sku} x {self.quantity_sold}'
+        return f'Item x {self.quantity_sold}'

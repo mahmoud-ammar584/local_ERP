@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import PurchaseOrder, PurchaseOrderItem
 
 class PurchaseOrderItemSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source='product.__str__', read_only=True)
+    product_name = serializers.CharField(source='variant.product.__str__', read_only=True)
 
     class Meta:
         model = PurchaseOrderItem
@@ -32,7 +32,7 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
             PurchaseOrderItem.objects.create(purchase_order=order, **item_data)
         order.recalculate_total()
         
-        # لو الحالة "مستلم" بنحدث المخزون فوراً
+        # If status is "Received", update stock immediately
         if order.status == 'R':
             order.receive_all()
             

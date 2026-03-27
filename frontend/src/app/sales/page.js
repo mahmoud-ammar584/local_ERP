@@ -59,7 +59,7 @@ export default function SalesPage() {
     onSuccess: (res) => { 
       queryClient.invalidateQueries(['sales']); 
       setModalOpen(false); 
-      setInvoiceToPrint(res.data); // فتح الفاتورة للطباعة فوراً
+      setInvoiceToPrint(res.data); // Open invoice for printing immediately
     },
   });
 
@@ -94,19 +94,19 @@ export default function SalesPage() {
     }
   };
 
-  const fmt = (n) => Number(n || 0).toLocaleString('ar-EG', { maximumFractionDigits: 0 });
+  const fmt = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
   const transactions = data?.results || data || [];
 
   return (
     <AppShell>
       <div className="page-header">
-        <h1 className="page-title">المبيعات</h1>
+        <h1 className="page-title">Sales</h1>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button className="btn-secondary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <HiOutlineDownload size={18} /> تصدير CSV
+            <HiOutlineDownload size={18} /> Export CSV
           </button>
           <button className="btn-primary" onClick={() => setModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <HiOutlinePlus size={18} /> عملية بيع جديدة
+            <HiOutlinePlus size={18} /> New sale
           </button>
         </div>
       </div>
@@ -115,17 +115,17 @@ export default function SalesPage() {
         <div className="card" style={{ padding: 0, overflow: 'auto' }}>
           <table>
             <thead>
-              <tr><th>#</th><th>التاريخ</th><th>العميل</th><th>طريقة الدفع</th><th>المبلغ</th><th>الربح</th><th>إجراءات</th></tr>
+              <tr><th>#</th><th>Date</th><th>Customer</th><th>Payment method</th><th>Amount</th><th>Profit</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {transactions.map(t => (
                 <tr key={t.id}>
                   <td>{t.id}</td>
-                  <td>{new Date(t.transaction_date).toLocaleDateString('ar-EG')}</td>
+                  <td>{new Date(t.transaction_date).toLocaleDateString('en-US')}</td>
                   <td>{t.customer_name || '—'}</td>
                   <td>{t.payment_method_name}</td>
-                  <td style={{ fontWeight: 600 }}>{fmt(t.final_amount)} ج.م</td>
-                  <td style={{ color: 'var(--accent-green)' }}>{fmt(t.total_profit)} ج.م</td>
+                  <td style={{ fontWeight: 600 }}>{fmt(t.final_amount)} EGP</td>
+                  <td style={{ color: 'var(--accent-green)' }}>{fmt(t.total_profit)} EGP</td>
                   <td>
                     <button onClick={() => setDetailModal(t)} style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer' }}>
                       <HiOutlineEye size={18} />
@@ -140,46 +140,46 @@ export default function SalesPage() {
 
       {data?.count && (
         <div className="pagination">
-          <button disabled={!data.previous} onClick={() => setPage(p => p - 1)}>السابق</button>
-          <span style={{ color: 'var(--text-secondary)' }}>صفحة {page}</span>
-          <button disabled={!data.next} onClick={() => setPage(p => p + 1)}>التالي</button>
+          <button disabled={!data.previous} onClick={() => setPage(p => p - 1)}>Previous</button>
+          <span style={{ color: 'var(--text-secondary)' }}>Page {page}</span>
+          <button disabled={!data.next} onClick={() => setPage(p => p + 1)}>Next</button>
         </div>
       )}
 
       {/* New Sale Modal */}
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="عملية بيع جديدة">
+      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="New sale">
         <form onSubmit={handleSubmit}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
             <div className="form-group">
-              <label className="form-label">التاريخ *</label>
+              <label className="form-label">Date *</label>
               <input type="datetime-local" required value={form.transaction_date} onChange={e => setForm({ ...form, transaction_date: e.target.value })} />
             </div>
             <div className="form-group">
-              <label className="form-label">العميل</label>
+              <label className="form-label">Customer</label>
               <select value={form.customer} onChange={e => setForm({ ...form, customer: e.target.value })}>
-                <option value="">بدون عميل</option>
+                <option value="">No customer</option>
                 {(customers?.results || customers || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">طريقة الدفع *</label>
+              <label className="form-label">Payment method *</label>
               <select required value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value })}>
-                <option value="">اختر</option>
+                <option value="">Select</option>
                 {(paymentMethods?.results || paymentMethods || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">خصم عام %</label>
+              <label className="form-label">Overall discount %</label>
               <input type="number" step="0.01" value={form.overall_discount_percentage} onChange={e => setForm({ ...form, overall_discount_percentage: e.target.value })} />
             </div>
           </div>
 
-          <h4 style={{ margin: '1rem 0 0.5rem', color: 'var(--gold)' }}>المنتجات</h4>
+          <h4 style={{ margin: '1rem 0 0.5rem', color: 'var(--gold)' }}>Items</h4>
           {form.items.map((item, i) => (
             <div key={i} style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 2fr 1fr 1fr auto', gap: '0.5rem', alignItems: 'end' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.7rem' }}>بحث بـ SKU</label>
+                  <label className="form-label" style={{ fontSize: '0.7rem' }}>Lookup by SKU</label>
                   <input 
                     placeholder="SKU..." 
                     value={item.sku || ''} 
@@ -188,24 +188,24 @@ export default function SalesPage() {
                   />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.7rem' }}>المنتج</label>
+                  <label className="form-label" style={{ fontSize: '0.7rem' }}>Product</label>
                   <select required value={item.product} onChange={e => updateItem(i, 'product', e.target.value)}>
-                    <option value="">اختر المنتج</option>
+                    <option value="">Select product</option>
                     {(products?.results || products || []).map(p => (
                       <option key={p.id} value={p.id}>
-                        {p.brand_name} - {p.model} (رصيد: {p.current_quantity})
+                        {p.brand_name} - {p.model} (stock: {p.current_quantity})
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.7rem' }}>الكمية</label>
+                  <label className="form-label" style={{ fontSize: '0.7rem' }}>Quantity</label>
                   <input type="number" min="1" required value={item.quantity_sold} onChange={e => updateItem(i, 'quantity_sold', e.target.value)} />
-                  {item._stock <= 0 && item._can_oversell && <p style={{ fontSize: '0.65rem', color: 'var(--gold)' }}>(طلب مسبق)</p>}
-                  {item._stock < item.quantity_sold && !item._can_oversell && <p style={{ fontSize: '0.65rem', color: 'var(--accent-red)' }}>عجز: {item._stock - item.quantity_sold}</p>}
+                  {item._stock <= 0 && item._can_oversell && <p style={{ fontSize: '0.65rem', color: 'var(--gold)' }}>(pre-order)</p>}
+                  {item._stock < item.quantity_sold && !item._can_oversell && <p style={{ fontSize: '0.65rem', color: 'var(--accent-red)' }}>Shortage: {item._stock - item.quantity_sold}</p>}
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.7rem' }}>السعر</label>
+                  <label className="form-label" style={{ fontSize: '0.7rem' }}>Unit price</label>
                   <input type="number" step="0.01" required value={item.unit_price} onChange={e => updateItem(i, 'unit_price', e.target.value)} />
                 </div>
                 <button type="button" onClick={() => removeItem(i)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', height: '38px' }}>✕</button>
@@ -213,7 +213,7 @@ export default function SalesPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.35rem' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <select required value={item.tax_rate} onChange={e => updateItem(i, 'tax_rate', e.target.value)} style={{ fontSize: '0.8rem' }}>
-                    <option value="">الضريبة</option>
+                    <option value="">Tax</option>
                     {(taxRates?.results || taxRates || []).map(t => <option key={t.id} value={t.id}>{t.name} ({t.rate}%)</option>)}
                   </select>
                 </div>

@@ -1,21 +1,28 @@
 from django.db import models
+from django.core.validators import RegexValidator
+
+
+phone_validator = RegexValidator(
+    regex=r'^\+?[0-9\s\-\(\)]{7,20}$',
+    message="Enter a valid phone number. Examples: +201001234567, 01001234567"
+)
 
 
 class Brand(models.Model):
-    """العلامات التجارية الفاخرة - مثل Gucci, Prada"""
+    """Luxury brands - such as Gucci, Prada"""
     name = models.CharField(max_length=200, unique=True)
     description = models.TextField(blank=True, null=True)
     logo_url = models.URLField(blank=True, null=True)
 
-    # TODO: إضافة حقل logo كـ ImageField بدلاً من URL
-    # لاحقاً ممكن نربطه بـ S3 أو مجلد media محلي
+    # TODO: Change logo_url to an ImageField named 'logo'
+    # This will allow local media or S3 storage integration later.
 
     def __str__(self):
         return self.name
 
 
 class Category(models.Model):
-    """فئات المنتجات - حقائب، أحذية، إلخ"""
+    """Product categories - Bags, Shoes, Ready-to-wear, etc."""
     name = models.CharField(max_length=200, unique=True)
     description = models.TextField(blank=True, null=True)
 
@@ -28,37 +35,41 @@ class Category(models.Model):
 
 class Supplier(models.Model):
     """
-    الموردون - بيانات التواصل وشروط الدفع
-    ملاحظة: payment_terms حالياً نص حر، المفروض يكون choices
-    بس سبناه كده عشان كل مورد ممكن يكون ليه شروط مختلفة
+    Suppliers - contact details and payment terms.
+    NOTE: payment_terms is currently a free-text field. It could be converted to choices,
+    but was left as text to accommodate unique terms for each supplier.
     """
     name = models.CharField(max_length=200)
     contact_person = models.CharField(max_length=200, blank=True, null=True)
-    phone = models.CharField(max_length=50, blank=True, null=True)
+    phone = models.CharField(
+        max_length=50, blank=True, null=True,
+        validators=[phone_validator]
+    )
     email = models.EmailField(blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     payment_terms = models.TextField(blank=True, null=True)
-
-    # FIXME: المفروض نضيف validation على رقم التليفون
-    # حالياً بيقبل أي حاجة وده مش ideal
 
     def __str__(self):
         return self.name
 
 
 class CustomerType(models.Model):
-    """أنواع العملاء - VIP, عادي, جملة"""
+    """
+    Customer tiers — VIP, Regular, Wholesale.
+    The discount_percentage is automatically applied to sales for this tier.
+    """
     name = models.CharField(max_length=100, unique=True)
-
-    # TODO: إضافة حقل discount_percentage لكل نوع عميل
-    # بحيث الخصم يتطبق تلقائي حسب نوع العميل
+    discount_percentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text="Auto-applied discount percentage for this customer type (0–100)"
+    )
 
     def __str__(self):
-        return self.name
+        return f"{self.name} ({self.discount_percentage}% off)"
 
 
 class PaymentMethod(models.Model):
-    """طرق الدفع المتاحة"""
+    """Available payment methods"""
     name = models.CharField(max_length=100, unique=True)
 
     def __str__(self):
@@ -67,9 +78,9 @@ class PaymentMethod(models.Model):
 
 class Currency(models.Model):
     """
-    العملات وأسعار الصرف
-    العملة الأساسية هي الجنيه المصري (EGP) بسعر صرف = 1.0
-    باقي العملات بتتحول للجنيه عن طريق exchange_rate_to_base
+    Currencies and exchange rates.
+    Base currency is Egyptian Pound (EGP) with an exchange rate to base = 1.0.
+    All other currencies are converted to EGP via exchange_rate_to_base.
     """
     code = models.CharField(max_length=10, unique=True)
     name = models.CharField(max_length=100)
@@ -77,9 +88,9 @@ class Currency(models.Model):
         max_digits=12, decimal_places=4, default=1.0
     )
 
-    # TODO: ربط API خارجي لتحديث أسعار الصرف تلقائياً
-    # ممكن نستخدم openexchangerates.org أو fixer.io
-    # حالياً التحديث يدوي من صفحة الإعدادات
+    # TODO: Integrate external API for automatic exchange rate updates
+    # Consider openexchangerates.org or fixer.io.
+    # Currently, updates are performed manually via the settings page.
 
     class Meta:
         verbose_name_plural = 'Currencies'
@@ -89,9 +100,9 @@ class Currency(models.Model):
 
 
 class TaxRate(models.Model):
-    """نسب الضرائب - القيمة المضافة وغيرها"""
+    """Tax rates - VAT and others"""
     name = models.CharField(max_length=100)
-    # rate مخزنة كرقم عشري: 0.14 يعني 14%
+    # rate stored as decimal: 0.14 represents 14%
     rate = models.DecimalField(max_digits=5, decimal_places=4)
 
     def __str__(self):
@@ -100,34 +111,62 @@ class TaxRate(models.Model):
 
 class StoreInfo(models.Model):
     """
-    بيانات المتجر - Singleton model
-    يعني فيه instance واحد بس في الداتابيز
-    عملنا override لـ save() عشان نضمن الـ pk دايماً = 1
+    Store settings - Singleton model.
+    Only one instance exists in the database.
+    save() is overridden to ensure pk is always 1.
     """
     name = models.CharField(max_length=200)
     address = models.TextField()
     phone = models.CharField(max_length=50)
     email = models.EmailField()
-
-    # TODO: إضافة حقل commercial_registration (سجل تجاري)
-    # وحقل tax_number (الرقم الضريبي) للفواتير الرسمية
+    commercial_registration = models.CharField(
+        max_length=100, blank=True, null=True,
+        verbose_name="Commercial Registration Number"
+    )
+    tax_registration_number = models.CharField(
+        max_length=100, blank=True, null=True,
+        verbose_name="Tax Registration Number"
+    )
 
     class Meta:
         verbose_name = 'Store Info'
         verbose_name_plural = 'Store Info'
 
     def save(self, *args, **kwargs):
-        # نضمن إن فيه record واحد بس - Singleton pattern
+        # Ensure only one record exists - Singleton pattern
         self.pk = 1
         super().save(*args, **kwargs)
 
     @classmethod
     def load(cls):
-        """بتجيب بيانات المتجر أو بتعمل واحدة default لو مفيش"""
+        """Retrieves store info or creates a default instance if none exists."""
         obj, _ = cls.objects.get_or_create(pk=1, defaults={
-            'name': 'المتجر', 'address': '-', 'phone': '-', 'email': 'store@example.com'
+            'name': 'Boutique', 'address': '-', 'phone': '-', 'email': 'store@example.com'
         })
         return obj
 
     def __str__(self):
         return self.name
+
+
+class Season(models.Model):
+    """
+    Fashion season — used to group products into collections.
+    Example: SS25, FW25, Resort 2026
+    """
+    SEASON_TYPES = [
+        ('SS', 'Spring/Summer'),
+        ('FW', 'Fall/Winter'),
+        ('RST', 'Resort'),
+        ('PRE', 'Pre-Collection'),
+    ]
+    name = models.CharField(max_length=100, unique=True)
+    season_type = models.CharField(max_length=4, choices=SEASON_TYPES)
+    year = models.IntegerField()
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ['-year', 'season_type']

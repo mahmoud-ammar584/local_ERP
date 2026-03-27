@@ -13,11 +13,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='product',
             name='profit_margin_percentage',
-            field=models.DecimalField(decimal_places=2, default=0, max_digits=5, verbose_name='هامش الربح (%)'),
+            field=models.DecimalField(decimal_places=2, default=0, max_digits=5, verbose_name='Profit Margin (%)'),
         ),
         migrations.AlterField(
             model_name='product',
             name='suggested_selling_price',
-            field=models.DecimalField(blank=True, decimal_places=2, max_digits=12, null=True, verbose_name='سعر البيع المقترح'),
+            field=models.DecimalField(blank=True, decimal_places=2, max_digits=12, null=True, verbose_name='Suggested Selling Price'),
         ),
     ]

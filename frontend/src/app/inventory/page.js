@@ -72,10 +72,10 @@ export default function InventoryPage() {
     e.preventDefault();
     setErrors({});
     
-    // بنستخدم FormData عشان الصور
+    // Use FormData for images
     const formData = new FormData();
     Object.keys(form).forEach(key => {
-      if (key === 'image' && typeof form[key] === 'string') return; // ما نبعتش الـ URL كملف
+      if (key === 'image' && typeof form[key] === 'string') return; // Don't send an existing URL as a file
       if (form[key] !== null && form[key] !== undefined) {
         formData.append(key, form[key]);
       }
@@ -98,15 +98,15 @@ export default function InventoryPage() {
     }
   };
 
-  const fmt = (n) => Number(n || 0).toLocaleString('ar-EG', { maximumFractionDigits: 0 });
+  const fmt = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
   const products = data?.results || data || [];
 
   return (
     <AppShell>
       <div className="page-header">
-        <h1 className="page-title">المخزون</h1>
+        <h1 className="page-title">Inventory</h1>
         <button className="btn-primary" onClick={openAdd} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <HiOutlinePlus size={18} /> إضافة منتج
+          <HiOutlinePlus size={18} /> Add product
         </button>
       </div>
 
@@ -124,9 +124,9 @@ export default function InventoryPage() {
             <table>
               <thead>
                 <tr>
-                  <th>الصورة</th><th>SKU</th><th>الماركة</th><th>الموديل</th><th>الفئة</th>
-                  <th>المقاس</th><th>הلون</th><th>الكمية</th>
-                  <th>التكلفة</th><th>سعر البيع</th><th>الربح المتوقع</th><th>إجراءات</th>
+                  <th>Image</th><th>SKU</th><th>Brand</th><th>Model</th><th>Category</th>
+                  <th>Size</th><th>Color</th><th>Qty</th>
+                  <th>Cost</th><th>Selling price</th><th>Expected profit</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -136,7 +136,7 @@ export default function InventoryPage() {
                       {p.image ? (
                         <img src={p.image} alt={p.model_name} style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover' }} />
                       ) : (
-                        <div style={{ width: '40px', height: '40px', background: 'var(--dark-input)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'var(--text-secondary)' }}>لا يوجد</div>
+                        <div style={{ width: '40px', height: '40px', background: 'var(--dark-input)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: 'var(--text-secondary)' }}>None</div>
                       )}
                     </td>
                     <td style={{ fontFamily: 'monospace' }}>{p.sku}</td>
@@ -150,17 +150,17 @@ export default function InventoryPage() {
                         {p.current_quantity ?? 0}
                       </span>
                     </td>
-                    <td>{fmt(p.total_cost)} ج.م</td>
-                    <td>{fmt(p.suggested_selling_price)} ج.م</td>
+                    <td>{fmt(p.total_cost)} EGP</td>
+                    <td>{fmt(p.suggested_selling_price)} EGP</td>
                     <td style={{ color: p.expected_profit > 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                      {fmt(p.expected_profit)} ج.م
+                      {fmt(p.expected_profit)} EGP
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button onClick={() => openEdit(p)} style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer' }}>
                           <HiOutlinePencil size={18} />
                         </button>
-                        <button onClick={() => { if (confirm('هل أنت متأكد؟')) deleteMutation.mutate(p.id); }}
+                        <button onClick={() => { if (confirm('Are you sure?')) deleteMutation.mutate(p.id); }}
                           style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer' }}>
                           <HiOutlineTrash size={18} />
                         </button>
@@ -175,16 +175,16 @@ export default function InventoryPage() {
           {/* Pagination */}
           {data?.count && (
             <div className="pagination">
-              <button disabled={!data.previous} onClick={() => setPage(p => p - 1)}>السابق</button>
-              <span style={{ color: 'var(--text-secondary)' }}>صفحة {page}</span>
-              <button disabled={!data.next} onClick={() => setPage(p => p + 1)}>التالي</button>
+              <button disabled={!data.previous} onClick={() => setPage(p => p - 1)}>Previous</button>
+              <span style={{ color: 'var(--text-secondary)' }}>Page {page}</span>
+              <button disabled={!data.next} onClick={() => setPage(p => p + 1)}>Next</button>
             </div>
           )}
         </>
       )}
 
       {/* Add/Edit Modal */}
-      <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'تعديل منتج' : 'إضافة منتج جديد'}>
+      <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'Edit product' : 'Add new product'}>
         <form onSubmit={handleSubmit}>
           {errors.non_field_errors && (
             <div style={{ color: 'var(--accent-red)', marginBottom: '1rem', padding: '0.5rem', background: 'rgba(231, 76, 60, 0.1)', borderRadius: '4px' }}>
@@ -198,108 +198,108 @@ export default function InventoryPage() {
               {errors.sku && <p className="field-error">{errors.sku}</p>}
             </div>
             <div className="form-group">
-              <label className="form-label">الموديل *</label>
+              <label className="form-label">Model *</label>
               <input required value={form.model_name || ''} onChange={e => setForm({ ...form, model_name: e.target.value })} />
               {errors.model_name && <p className="field-error">{errors.model_name}</p>}
             </div>
             <div className="form-group">
-              <label className="form-label">الماركة *</label>
+              <label className="form-label">Brand *</label>
               <select required value={form.brand || ''} onChange={e => setForm({ ...form, brand: e.target.value })}>
-                <option value="">اختر</option>
+                <option value="">Select</option>
                 {(brands?.results || brands || []).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
               {errors.brand && <p className="field-error">{errors.brand}</p>}
             </div>
             <div className="form-group">
-              <label className="form-label">الفئة *</label>
+              <label className="form-label">Category *</label>
               <select required value={form.category || ''} onChange={e => setForm({ ...form, category: e.target.value })}>
-                <option value="">اختر</option>
+                <option value="">Select</option>
                 {(categories?.results || categories || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               {errors.category && <p className="field-error">{errors.category}</p>}
             </div>
             <div className="form-group">
-              <label className="form-label">الجنس</label>
+              <label className="form-label">Gender</label>
               <select value={form.gender || 'U'} onChange={e => setForm({ ...form, gender: e.target.value })}>
-                <option value="M">رجالي</option>
-                <option value="F">نسائي</option>
-                <option value="U">للجنسين</option>
+                <option value="M">Male</option>
+                <option value="F">Female</option>
+                <option value="U">Unisex</option>
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">المقاس *</label>
+              <label className="form-label">Size *</label>
               <input required value={form.size || ''} onChange={e => setForm({ ...form, size: e.target.value })} />
               {errors.size && <p className="field-error">{errors.size}</p>}
             </div>
             <div className="form-group">
-              <label className="form-label">اللون *</label>
+              <label className="form-label">Color *</label>
               <input required value={form.color || ''} onChange={e => setForm({ ...form, color: e.target.value })} />
               {errors.color && <p className="field-error">{errors.color}</p>}
             </div>
             <div className="form-group">
-              <label className="form-label">المورد *</label>
+              <label className="form-label">Supplier *</label>
               <select required value={form.supplier || ''} onChange={e => setForm({ ...form, supplier: e.target.value })}>
-                <option value="">اختر</option>
+                <option value="">Select</option>
                 {(suppliers?.results || suppliers || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
               {errors.supplier && <p className="field-error">{errors.supplier}</p>}
             </div>
             <div className="form-group">
-              <label className="form-label">التكلفة (عملة أجنبية) *</label>
+              <label className="form-label">Cost (foreign currency) *</label>
               <input type="number" step="0.01" required value={form.cost_foreign || ''} onChange={e => setForm({ ...form, cost_foreign: e.target.value })} />
               {errors.cost_foreign && <p className="field-error">{errors.cost_foreign}</p>}
             </div>
             <div className="form-group">
-              <label className="form-label">العملة *</label>
+              <label className="form-label">Currency *</label>
               <select required value={form.currency || ''} onChange={e => setForm({ ...form, currency: e.target.value })}>
-                <option value="">اختر</option>
+                <option value="">Select</option>
                 {(currencies?.results || currencies || []).map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
               </select>
               {errors.currency && <p className="field-error">{errors.currency}</p>}
             </div>
             <div className="form-group">
-              <label className="form-label">تكلفة الجمارك</label>
+              <label className="form-label">Customs cost</label>
               <input type="number" step="0.01" value={form.customs_cost || '0'} onChange={e => setForm({ ...form, customs_cost: e.target.value })} />
             </div>
             <div className="form-group">
-              <label className="form-label">تكلفة الشحن</label>
+              <label className="form-label">Shipping cost</label>
               <input type="number" step="0.01" value={form.shipping_cost || '0'} onChange={e => setForm({ ...form, shipping_cost: e.target.value })} />
             </div>
             <div className="form-group">
-              <label className="form-label">هامش الربح (%)</label>
+              <label className="form-label">Profit margin (%)</label>
               <input type="number" step="0.01" value={form.profit_margin_percentage || '0'} onChange={e => setForm({ ...form, profit_margin_percentage: e.target.value })} />
               {errors.profit_margin_percentage && <p className="field-error">{errors.profit_margin_percentage}</p>}
             </div>
             <div className="form-group">
-              <label className="form-label">سعر البيع المقترح</label>
-              <input type="number" step="0.01" value={form.suggested_selling_price || ''} onChange={e => setForm({ ...form, suggested_selling_price: e.target.value })} placeholder="يترك فارغاً للحساب التلقائي" />
+              <label className="form-label">Suggested selling price</label>
+              <input type="number" step="0.01" value={form.suggested_selling_price || ''} onChange={e => setForm({ ...form, suggested_selling_price: e.target.value })} placeholder="Leave empty for auto calculation" />
               {errors.suggested_selling_price && <p className="field-error">{errors.suggested_selling_price}</p>}
             </div>
             <div className="form-group">
-              <label className="form-label">حد التنبيه</label>
+              <label className="form-label">Low stock threshold</label>
               <input type="number" value={form.min_alert_quantity || '0'} onChange={e => setForm({ ...form, min_alert_quantity: e.target.value })} />
             </div>
             <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingTop: '1.5rem' }}>
               <input type="checkbox" style={{ width: 'auto' }} checked={form.can_be_oversold || false} onChange={e => setForm({ ...form, can_be_oversold: e.target.checked })} />
-              <label className="form-label" style={{ marginBottom: 0 }}>يسمح بالبيع بدون رصيد</label>
+              <label className="form-label" style={{ marginBottom: 0 }}>Allow overselling</label>
             </div>
             <div className="form-group">
-              <label className="form-label">الكمية الحالية (تعديل مباشر)</label>
+              <label className="form-label">Current quantity (direct adjustment)</label>
               <input type="number" value={form.current_quantity || '0'} onChange={e => setForm({ ...form, current_quantity: e.target.value })} />
             </div>
             <div className="form-group">
-              <label className="form-label">صورة المنتج</label>
+              <label className="form-label">Product image</label>
               <input type="file" accept="image/*" onChange={e => setForm({ ...form, image: e.target.files[0] })} />
               {typeof form.image === 'string' && form.image && (
-                <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>توجد صورة حالية</p>
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>An image is already set</p>
               )}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem', justifyContent: 'flex-start' }}>
             <button type="submit" className="btn-primary" disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? 'جاري الحفظ...' : 'حفظ'}
+              {saveMutation.isPending ? 'Saving...' : 'Save'}
             </button>
-            <button type="button" className="btn-secondary" onClick={closeModal}>إلغاء</button>
+            <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
           </div>
         </form>
       </Modal>

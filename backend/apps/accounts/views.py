@@ -16,14 +16,14 @@ def login_view(request):
         password=serializer.validated_data['password']
     )
     if not user:
-        return Response({'error': 'بيانات الدخول غير صحيحة'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
     token, _ = Token.objects.get_or_create(user=user)
     return Response({'token': token.key, 'user': UserSerializer(user).data})
 
 @api_view(['POST'])
 def logout_view(request):
     request.user.auth_token.delete()
-    return Response({'message': 'تم تسجيل الخروج بنجاح'})
+    return Response({'message': 'Logged out successfully'})
 
 @api_view(['GET'])
 def me_view(request):

@@ -20,7 +20,7 @@ export default function LoginPage() {
       await login(form.username, form.password);
       router.push('/dashboard');
     } catch {
-      setError('اسم المستخدم أو كلمة المرور غير صحيحة');
+      setError('Invalid username or password');
     }
     setLoading(false);
   };
@@ -41,15 +41,15 @@ export default function LoginPage() {
             fontSize: '2rem', fontWeight: 800,
             background: 'linear-gradient(135deg, var(--gold), var(--gold-light))',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          }}>لا بوتيك</h1>
+          }}>La Boutique</h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem', fontSize: '0.9rem' }}>
-            نظام إدارة المتجر الفاخر
+            Luxury retail management system
           </p>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label className="form-label">اسم المستخدم</label>
+            <label className="form-label">Username</label>
             <input
               type="text" value={form.username}
               onChange={e => setForm({ ...form, username: e.target.value })}
@@ -58,7 +58,7 @@ export default function LoginPage() {
             />
           </div>
           <div className="form-group">
-            <label className="form-label">كلمة المرور</label>
+            <label className="form-label">Password</label>
             <input
               type="password" value={form.password}
               onChange={e => setForm({ ...form, password: e.target.value })}
@@ -71,7 +71,7 @@ export default function LoginPage() {
           )}
           <button type="submit" className="btn-primary" disabled={loading}
             style={{ width: '100%', padding: '0.75rem', fontSize: '1rem' }}>
-            {loading ? 'جاري الدخول...' : 'تسجيل الدخول'}
+            {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
 

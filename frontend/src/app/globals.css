@@ -24,7 +24,25 @@ body {
   background-color: var(--dark);
   color: var(--text-primary);
   font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+  direction: ltr;
+  margin: 0;
+  padding: 0;
+}
+
+/* RTL Support */
+html[dir="rtl"] body {
   direction: rtl;
+  font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+}
+
+html[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+
+html[dir="ltr"] {
+  direction: ltr;
+  text-align: left;
 }
 
 input, select, textarea {

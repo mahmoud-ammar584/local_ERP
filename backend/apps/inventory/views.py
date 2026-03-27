@@ -6,9 +6,9 @@ from .models import Product, Stock
 from .serializers import ProductListSerializer, ProductCreateSerializer
 
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.select_related('brand', 'category', 'supplier', 'currency', 'stock').all()
-    filterset_fields = ['brand', 'category', 'gender', 'supplier']
-    search_fields = ['sku', 'barcode', 'model_name', 'color']
+    queryset = Product.objects.select_related('brand', 'category', 'supplier', 'currency').prefetch_related('variants', 'variants__stock').all()
+    filterset_fields = ['brand', 'category', 'supplier', 'season']
+    search_fields = ['sku', 'variants__sku_suffix', 'model_name']
     ordering_fields = ['created_at', 'suggested_selling_price', 'model_name']
     ordering = ['-created_at']
 
@@ -19,14 +19,24 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def lookup(self, request):
-        """البحث السريع عن منتج باستخدام الـ SKU"""
+        """Quick product lookup by SKU"""
         sku = request.query_params.get('sku')
         if not sku:
             return response.Response({'error': 'SKU is required'}, status=400)
         
         try:
-            product = Product.objects.get(sku=sku)
-            serializer = ProductListSerializer(product)
+            from .models import ProductVariant
+            from .serializers import ProductVariantSerializer
+            # full_sku = product.sku + sku_suffix (sku_suffix includes leading dash)
+            from django.db.models import F, CharField
+            from django.db.models.functions import Concat
+            variant = (
+                ProductVariant.objects
+                .select_related('product', 'product__brand', 'product__category', 'product__currency')
+                .annotate(_full_sku=Concat(F('product__sku'), F('sku_suffix'), output_field=CharField()))
+                .get(_full_sku=sku)
+            )
+            serializer = ProductVariantSerializer(variant)
             return response.Response(serializer.data)
-        except Product.DoesNotExist:
-            return response.Response({'error': 'Product not found'}, status=404)
+        except ProductVariant.DoesNotExist:
+            return response.Response({'error': 'Variant not found'}, status=404)

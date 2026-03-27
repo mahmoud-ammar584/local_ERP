@@ -28,14 +28,14 @@ class SalesTransactionViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def export_csv(self, request):
-        """تصدير المبيعات لملف CSV"""
+        """Export sales to CSV file"""
         queryset = self.filter_queryset(self.get_queryset())
         
         response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
         response['Content-Disposition'] = 'attachment; filename="sales_report.csv"'
         
         writer = csv.writer(response)
-        writer.writerow(['#', 'التاريخ', 'العميل', 'طريقة الدفع', 'المبلغ الإجمالي', 'الربح'])
+        writer.writerow(['#', 'Date', 'Customer', 'Payment Method', 'Total Amount', 'Profit'])
         
         for sale in queryset:
             writer.writerow([
