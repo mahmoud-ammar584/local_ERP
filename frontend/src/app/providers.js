@@ -29,7 +29,6 @@ function AuthProvider({ children }) {
       const { token, user: userData } = res.data;
       
       localStorage.setItem('token', token);
-      // تحديث الحالة فوراً عشان AppShell يشوفها
       setUser(userData);
       return res.data;
     } catch (err) {
@@ -42,8 +41,6 @@ function AuthProvider({ children }) {
     localStorage.removeItem('token');
     setUser(null);
   };
-
-  if (loading) return <div className="loading-spinner" style={{ minHeight: '100vh' }} />;
 
   return (
     <AuthContext.Provider value={{ user, login, logout, loading }}>

@@ -2,17 +2,39 @@
 import { useAuth } from '@/app/providers';
 import Sidebar from '@/components/Sidebar';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function AppShell({ children }) {
   const { user } = useAuth();
   const router = useRouter();
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    if (!user) router.push('/login');
+    setIsClient(true);
+    if (!user) {
+      router.push('/login');
+    }
   }, [user, router]);
 
-  if (!user) return null;
+  if (!isClient || !user) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: 'var(--dark)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+        <div style={{
+          textAlign: 'center',
+          color: 'var(--text-secondary)',
+        }}>
+          <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⏳</div>
+          <p>جاري التحميل...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex' }}>

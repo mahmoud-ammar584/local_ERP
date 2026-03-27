@@ -1,16 +1,16 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { getTranslation, isRTL } from './locales';
+import { getTranslation, isRTL } from '../locales';
 
 const LanguageContext = createContext();
 
 export const LanguageProvider = ({ children }) => {
   const [locale, setLocale] = useState('en');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    // Load saved locale from localStorage
+    // Load saved locale from localStorage (only on client-side)
     const savedLocale = localStorage.getItem('locale') || 'en';
     setLocale(savedLocale);
     
@@ -18,7 +18,7 @@ export const LanguageProvider = ({ children }) => {
     document.documentElement.lang = savedLocale;
     document.documentElement.dir = isRTL(savedLocale) ? 'rtl' : 'ltr';
     
-    setIsLoading(false);
+    setIsMounted(true);
   }, []);
 
   const changeLocale = (newLocale) => {
@@ -40,7 +40,7 @@ export const LanguageProvider = ({ children }) => {
     changeLocale,
     t,
     isRTL: isRTL(locale),
-    isLoading,
+    isMounted,
   };
 
   return (
