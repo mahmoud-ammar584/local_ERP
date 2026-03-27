@@ -104,7 +104,7 @@ class Command(BaseCommand):
         products = []
         for sku, brand, cat, model, gender, size, color, curr, cost, cust_ship, price in products_data:
             p = Product.objects.create(
-                sku=sku, brand=brand, category=cat, model=model, gender=gender,
+                sku=sku, brand=brand, category=cat, model_name=model, gender=gender,
                 size=size, color=color, cost_foreign=Decimal(str(cost)),
                 currency=curr, customs_cost=Decimal(str(cust_ship * 0.6)),
                 shipping_cost=Decimal(str(cust_ship * 0.4)),

@@ -32,7 +32,8 @@ class Product(models.Model):
     customs_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     shipping_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
-    suggested_selling_price = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="سعر البيع المقترح")
+    suggested_selling_price = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="سعر البيع المقترح", blank=True, null=True)
+    profit_margin_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name="هامش الربح (%)")
     min_alert_quantity = models.IntegerField(default=5, verbose_name="حد التنبيه")
     can_be_oversold = models.BooleanField(default=False, verbose_name="يسمح بالبيع بدون رصيد")
     image = models.ImageField(upload_to='products/', blank=True, null=True, verbose_name="صورة المنتج")
@@ -66,6 +67,20 @@ class Product(models.Model):
                 new_name = self.image.name.split('.')[0] + '.jpg'
                 self.image.save(new_name, ContentFile(img_io.getvalue()), save=False)
 
+        # --- حساب سعر البيع تلقائياً ---
+        # لو مفيش سعر بيع محدد أو لو هامش الربح اتغير، بنحسب السعر
+        if not self.suggested_selling_price or self.profit_margin_percentage > 0:
+            # بنحسب التكلفة الإجمالية الأول (من الـ properties)
+            # بس الـ properties بتحتاج أحياناً يكون الـ user_id أو الـ currency موجودين
+            # هنا بنحسبها يدوي للتأكيد
+            cost_local = self.cost_foreign * self.currency.exchange_rate_to_base
+            total_cost = cost_local + self.customs_cost + self.shipping_cost
+            
+            # لو المستخدم ما حددش سعر، بنطبق الهامش
+            # أو لو الهامش أكبر من 0 بنحدث السعر بناء عليه (أولوية للهامش لو موجود)
+            if not self.suggested_selling_price or self._state.adding or 'profit_margin_percentage' in kwargs.get('update_fields', []):
+                 self.suggested_selling_price = total_cost * (1 + self.profit_margin_percentage / 100)
+
         super().save(*args, **kwargs)
 
     # FIXME: لو المنتج ليه ألوان/مقاسات كتير
@@ -85,6 +100,8 @@ class Product(models.Model):
     @property
     def expected_profit(self):
         """الربح المتوقع = سعر البيع - إجمالي التكلفة"""
+        if self.suggested_selling_price is None:
+            return 0
         return self.suggested_selling_price - self.total_cost
 
     @property

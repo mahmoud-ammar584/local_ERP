@@ -42,7 +42,8 @@ export default function InventoryPage() {
     setEditing(null);
     setForm({ sku: '', brand: '', category: '', model_name: '', gender: 'U', size: '',
       color: '', cost_foreign: '', currency: '', customs_cost: '0', shipping_cost: '0',
-      suggested_selling_price: '', min_alert_quantity: '0', supplier: '', initial_quantity: '0' });
+      suggested_selling_price: '', profit_margin_percentage: '0', min_alert_quantity: '0', supplier: '',
+      current_quantity: '0' });
     setErrors({});
     setModalOpen(true);
   };
@@ -56,8 +57,10 @@ export default function InventoryPage() {
       customs_cost: product.customs_cost, shipping_cost: product.shipping_cost,
       suggested_selling_price: product.suggested_selling_price,
       min_alert_quantity: product.min_alert_quantity, supplier: product.supplier,
+      profit_margin_percentage: product.profit_margin_percentage || '0',
       can_be_oversold: product.can_be_oversold || false,
       image: product.image,
+      current_quantity: product.current_quantity || '0',
     });
     setErrors({});
     setModalOpen(true);
@@ -263,8 +266,13 @@ export default function InventoryPage() {
               <input type="number" step="0.01" value={form.shipping_cost || '0'} onChange={e => setForm({ ...form, shipping_cost: e.target.value })} />
             </div>
             <div className="form-group">
-              <label className="form-label">سعر البيع المقترح *</label>
-              <input type="number" step="0.01" required value={form.suggested_selling_price || ''} onChange={e => setForm({ ...form, suggested_selling_price: e.target.value })} />
+              <label className="form-label">هامش الربح (%)</label>
+              <input type="number" step="0.01" value={form.profit_margin_percentage || '0'} onChange={e => setForm({ ...form, profit_margin_percentage: e.target.value })} />
+              {errors.profit_margin_percentage && <p className="field-error">{errors.profit_margin_percentage}</p>}
+            </div>
+            <div className="form-group">
+              <label className="form-label">سعر البيع المقترح</label>
+              <input type="number" step="0.01" value={form.suggested_selling_price || ''} onChange={e => setForm({ ...form, suggested_selling_price: e.target.value })} placeholder="يترك فارغاً للحساب التلقائي" />
               {errors.suggested_selling_price && <p className="field-error">{errors.suggested_selling_price}</p>}
             </div>
             <div className="form-group">
@@ -275,12 +283,10 @@ export default function InventoryPage() {
               <input type="checkbox" style={{ width: 'auto' }} checked={form.can_be_oversold || false} onChange={e => setForm({ ...form, can_be_oversold: e.target.checked })} />
               <label className="form-label" style={{ marginBottom: 0 }}>يسمح بالبيع بدون رصيد</label>
             </div>
-            {!editing && (
-              <div className="form-group">
-                <label className="form-label">الكمية المبدئية</label>
-                <input type="number" value={form.initial_quantity || '0'} onChange={e => setForm({ ...form, initial_quantity: e.target.value })} />
-              </div>
-            )}
+            <div className="form-group">
+              <label className="form-label">الكمية الحالية (تعديل مباشر)</label>
+              <input type="number" value={form.current_quantity || '0'} onChange={e => setForm({ ...form, current_quantity: e.target.value })} />
+            </div>
             <div className="form-group">
               <label className="form-label">صورة المنتج</label>
               <input type="file" accept="image/*" onChange={e => setForm({ ...form, image: e.target.files[0] })} />

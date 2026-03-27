@@ -2,6 +2,7 @@ from datetime import timedelta
 from django.utils import timezone
 from django.db.models import Sum, Count, F, DecimalField
 from django.db.models.functions import TruncDate
+from django.core.cache import cache
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from apps.sales.models import SalesTransaction, SalesItem
@@ -29,6 +30,12 @@ def _parse_date_range(request):
 @api_view(['GET'])
 def summary(request):
     start, end = _parse_date_range(request)
+    period = request.query_params.get('period', 'month')
+    cache_key = f"dashboard_summary_{period}_{start}_{end}"
+    
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response(cached_data)
 
     sales = SalesTransaction.objects.filter(transaction_date__range=[start, end])
     total_sales = sales.aggregate(total=Sum('final_amount'))['total'] or 0
@@ -53,7 +60,7 @@ def summary(request):
     for sale in sales:
         total_profit += sale.total_profit
 
-    return Response({
+    result = {
         'total_sales': total_sales,
         'total_profit': total_profit,
         'total_expenses': total_expenses,
@@ -61,7 +68,10 @@ def summary(request):
         'low_stock_count': low_stock_count,
         'total_inventory_value': total_inventory_value,
         'total_transactions': sales.count(),
-    })
+    }
+    
+    cache.set(cache_key, result, 300) # 5 minutes cache
+    return Response(result)
 
 @api_view(['GET'])
 def sales_over_time(request):
@@ -96,7 +106,7 @@ def top_products(request):
     data = (
         SalesItem.objects
         .filter(sales_transaction__transaction_date__range=[start, end])
-        .values('product__sku', 'product__model', 'product__brand__name')
+        .values('product__sku', 'product__model_name', 'product__brand__name')
         .annotate(
             total_qty=Sum('quantity_sold'),
             total_revenue=Sum(F('unit_price') * F('quantity_sold'), output_field=DecimalField())

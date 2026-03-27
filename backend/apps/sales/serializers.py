@@ -1,8 +1,13 @@
 from rest_framework import serializers
 from .models import SalesTransaction, SalesItem
+from apps.customers.models import Customer
+from apps.inventory.tasks import update_stock_async
+from apps.core.utils import log_activity
 
 class SalesItemSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.__str__', read_only=True)
+    product_sku = serializers.CharField(source='product.sku', read_only=True)
+    product_image_url = serializers.CharField(source='product.image_url', read_only=True)
     item_total_before_tax = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
     item_tax = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
     item_total_after_tax = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
@@ -51,11 +56,8 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
 
         for item_data in items_data:
             SalesItem.objects.create(sales_transaction=transaction, **item_data)
-            # Decrement stock
-            product = item_data['product']
-            stock = product.stock
-            stock.current_quantity -= item_data['quantity_sold']
-            stock.save()
+            # --- ASYNC STOCK UPDATE (Phase 9) ---
+            update_stock_async(item_data['product'].id, -item_data['quantity_sold'])
 
         transaction.recalculate()
 
@@ -66,5 +68,16 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
             customer.total_profit += transaction.total_profit
             customer.last_purchase_date = transaction.transaction_date.date()
             customer.save()
+
+        # --- LOG ACTIVITY (Phase 10) ---
+        request = self.context.get('request')
+        if request and request.user:
+            log_activity(
+                request.user, 
+                f"Created Sale #{transaction.id}", 
+                "SalesTransaction", 
+                transaction.id,
+                {"amount": str(transaction.final_amount)}
+            )
 
         return transaction

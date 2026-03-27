@@ -20,9 +20,31 @@ export default function CustomersPage() {
 
   const { data: customerTypes } = useQuery({ queryKey: ['customer-types'], queryFn: () => api.get('/settings/customer-types/').then(r => r.data) });
 
+  const [status, setStatus] = useState('');
+
   const saveMutation = useMutation({
-    mutationFn: (data) => editing ? api.put(`/customers/${editing.id}/`, data) : api.post('/customers/', data),
-    onSuccess: () => { queryClient.invalidateQueries(['customers']); closeModal(); },
+    mutationFn: (data) => {
+      setStatus('جاري الحفظ...');
+      const payload = {
+        name: data.name,
+        phone: data.phone || null,
+        email: data.email || null,
+        customer_type: parseInt(data.customer_type),
+        address: data.address || '',
+        notes: data.notes || '',
+      };
+      return editing ? api.put(`/customers/${editing.id}/`, payload) : api.post('/customers/', payload);
+    },
+    onSuccess: () => { 
+      setStatus('تم الحفظ بنجاح!');
+      queryClient.invalidateQueries(['customers']); 
+      setTimeout(closeModal, 1000);
+    },
+    onError: (err) => {
+      const msg = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+      setStatus(`خطأ: ${msg}`);
+      console.error(err);
+    }
   });
 
   const deleteMutation = useMutation({
@@ -30,10 +52,24 @@ export default function CustomersPage() {
     onSuccess: () => queryClient.invalidateQueries(['customers']),
   });
 
-  const [form, setForm] = useState({});
-  const openAdd = () => { setEditing(null); setForm({ name: '', phone: '', email: '', customer_type: '', address: '', preferred_brands: '', notes: '' }); setModalOpen(true); };
-  const openEdit = (c) => { setEditing(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', customer_type: c.customer_type, address: c.address || '', preferred_brands: c.preferred_brands || '', notes: c.notes || '' }); setModalOpen(true); };
-  const closeModal = () => { setModalOpen(false); setEditing(null); };
+  const [form, setForm] = useState({ name: '', phone: '', email: '', customer_type: '', address: '', notes: '' });
+  const openAdd = () => { setEditing(null); setForm({ name: '', phone: '', email: '', customer_type: '', address: '', notes: '' }); setStatus(''); setModalOpen(true); };
+  const openEdit = (c) => { 
+    setEditing(c); 
+    setForm({ 
+      name: c.name, 
+      phone: c.phone || '', 
+      email: c.email || '', 
+      customer_type: c.customer_type.toString(), 
+      address: c.address || '', 
+      notes: c.notes || '' 
+    }); 
+    setStatus(''); 
+    setModalOpen(true); 
+  };
+  const closeModal = () => { setModalOpen(false); setEditing(null); setStatus(''); };
+
+  // ... rest of the component
 
   const fmt = (n) => Number(n || 0).toLocaleString('ar-EG', { maximumFractionDigits: 0 });
   const customers = data?.results || data || [];
@@ -95,6 +131,19 @@ export default function CustomersPage() {
             <div className="form-group" style={{ gridColumn: 'span 2' }}><label className="form-label">العنوان</label><textarea value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} rows={2} /></div>
             <div className="form-group" style={{ gridColumn: 'span 2' }}><label className="form-label">ملاحظات</label><textarea value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
           </div>
+          {status && (
+            <div style={{ 
+              marginTop: '1rem', 
+              padding: '0.75rem', 
+              borderRadius: '8px', 
+              background: status.startsWith('خطأ') ? 'rgba(231, 76, 60, 0.1)' : 'rgba(46, 204, 113, 0.1)',
+              color: status.startsWith('خطأ') ? 'var(--accent-red)' : 'var(--accent-green)',
+              fontSize: '0.9rem',
+              textAlign: 'center'
+            }}>
+              {status}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
             <button type="submit" className="btn-primary" disabled={saveMutation.isPending}>حفظ</button>
             <button type="button" className="btn-secondary" onClick={closeModal}>إلغاء</button>

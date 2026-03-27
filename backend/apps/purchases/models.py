@@ -1,6 +1,7 @@
 from django.db import models
 from apps.settings_app.models import Supplier, Currency
 from apps.inventory.models import Product
+from apps.inventory.tasks import update_stock_async
 
 class PurchaseOrder(models.Model):
     STATUS_CHOICES = [
@@ -24,6 +25,16 @@ class PurchaseOrder(models.Model):
         )
         self.total_amount_foreign = total
         self.save(update_fields=['total_amount_foreign'])
+
+    def receive_all(self):
+        """تنبيه: الاستلام التلقائي لكل الأصناف في الطلب"""
+        for item in self.items.all():
+            qty_to_receive = item.ordered_quantity - item.received_quantity
+            if qty_to_receive > 0:
+                item.received_quantity += qty_to_receive
+                item.save()
+                # --- ASYNC STOCK UPDATE (Phase 9) ---
+                update_stock_async(item.product.id, qty_to_receive)
 
     def __str__(self):
         return f'PO-{self.id} ({self.supplier.name})'

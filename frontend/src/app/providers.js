@@ -23,10 +23,17 @@ function AuthProvider({ children }) {
   }, []);
 
   const login = async (username, password) => {
-    const res = await api.post('/auth/login/', { username, password });
-    localStorage.setItem('token', res.data.token);
-    setUser(res.data.user);
-    return res.data;
+    try {
+      const res = await api.post('/auth/login/', { username, password });
+      const { token, user: userData } = res.data;
+      
+      localStorage.setItem('token', token);
+      // تحديث الحالة فوراً عشان AppShell يشوفها
+      setUser(userData);
+      return res.data;
+    } catch (err) {
+      throw err;
+    }
   };
 
   const logout = async () => {
@@ -46,7 +53,13 @@ function AuthProvider({ children }) {
 
 export function Providers({ children }) {
   const [queryClient] = useState(() => new QueryClient({
-    defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+    defaultOptions: { 
+      queries: { 
+        retry: 1, 
+        refetchOnWindowFocus: false,
+        staleTime: 5 * 60 * 1000, // 5 minutes cache by default
+      } 
+    },
   }));
 
   return (

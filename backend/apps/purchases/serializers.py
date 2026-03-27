@@ -31,6 +31,11 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
         for item_data in items_data:
             PurchaseOrderItem.objects.create(purchase_order=order, **item_data)
         order.recalculate_total()
+        
+        # لو الحالة "مستلم" بنحدث المخزون فوراً
+        if order.status == 'R':
+            order.receive_all()
+            
         return order
 
 class ReceiveItemsSerializer(serializers.Serializer):

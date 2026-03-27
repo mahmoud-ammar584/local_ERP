@@ -3,6 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import PurchaseOrder, PurchaseOrderItem
 from .serializers import PurchaseOrderSerializer, PurchaseOrderCreateSerializer, ReceiveItemsSerializer
+from apps.inventory.tasks import update_stock_async
+from apps.core.utils import log_activity
 
 class PurchaseOrderViewSet(viewsets.ModelViewSet):
     queryset = PurchaseOrder.objects.select_related('supplier', 'currency').prefetch_related('items__product').all()
@@ -30,9 +32,8 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
                 continue
             item.received_quantity += qty
             item.save()
-            stock = item.product.stock
-            stock.current_quantity += qty
-            stock.save()
+            # --- ASYNC STOCK UPDATE (Phase 9) ---
+            update_stock_async(item.product.id, qty)
 
         all_received = all(i.received_quantity >= i.ordered_quantity for i in order.items.all())
         any_received = any(i.received_quantity > 0 for i in order.items.all())
@@ -41,4 +42,13 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         elif any_received:
             order.status = 'PR'
         order.save()
+
+        # --- LOG ACTIVITY (Phase 10) ---
+        log_activity(
+            request.user, 
+            f"Received items for PO-{order.id}", 
+            "PurchaseOrder", 
+            order.id
+        )
+
         return Response(PurchaseOrderSerializer(order).data)

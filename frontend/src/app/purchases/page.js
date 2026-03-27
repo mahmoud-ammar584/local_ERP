@@ -26,6 +26,7 @@ export default function PurchasesPage() {
 
   const [form, setForm] = useState({
     supplier: '', order_date: new Date().toISOString().slice(0, 10), expected_delivery_date: '', currency: '',
+    status: 'P',
     items: [{ product: '', ordered_quantity: 1, unit_cost_foreign: '' }],
   });
 
@@ -131,6 +132,13 @@ export default function PurchasesPage() {
             <div className="form-group">
               <label className="form-label">تاريخ التسليم المتوقع</label>
               <input type="date" value={form.expected_delivery_date} onChange={e => setForm({ ...form, expected_delivery_date: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">الحالة</label>
+              <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+                <option value="P">معلق (طلب شراء)</option>
+                <option value="R">مستلم (فاتورة نهائية)</option>
+              </select>
             </div>
           </div>
           <h4 style={{ margin: '1rem 0 0.5rem', color: 'var(--gold)' }}>المنتجات</h4>

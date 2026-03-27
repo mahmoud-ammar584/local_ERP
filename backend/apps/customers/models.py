@@ -15,5 +15,12 @@ class Customer(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def save(self, *args, **kwargs):
+        if self.phone == "":
+            self.phone = None
+        if self.email == "":
+            self.email = None
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name

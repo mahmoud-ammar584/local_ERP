@@ -4,12 +4,13 @@ import Modal from '@/components/Modal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState } from 'react';
-import { HiOutlinePlus, HiOutlineEye } from 'react-icons/hi';
+import { HiOutlinePlus, HiOutlineEye, HiOutlineDownload } from 'react-icons/hi';
 
 export default function SalesPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [detailModal, setDetailModal] = useState(null);
+  const [invoiceToPrint, setInvoiceToPrint] = useState(null);
   const [page, setPage] = useState(1);
 
   const { data, isLoading } = useQuery({
@@ -40,9 +41,26 @@ export default function SalesPage() {
     setForm({ ...form, items });
   };
 
+  const handleSKULookup = (i, e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const sku = form.items[i].sku;
+      if (!sku) return;
+      
+      const prod = (products?.results || products || []).find(p => p.sku === sku);
+      if (prod) {
+        updateItem(i, 'product', prod.id.toString());
+      }
+    }
+  };
+
   const createMutation = useMutation({
     mutationFn: (data) => api.post('/sales/transactions/', data),
-    onSuccess: () => { queryClient.invalidateQueries(['sales']); setModalOpen(false); },
+    onSuccess: (res) => { 
+      queryClient.invalidateQueries(['sales']); 
+      setModalOpen(false); 
+      setInvoiceToPrint(res.data); // فتح الفاتورة للطباعة فوراً
+    },
   });
 
   const handleSubmit = (e) => {
@@ -61,6 +79,21 @@ export default function SalesPage() {
     createMutation.mutate(payload);
   };
 
+  const handleExport = async () => {
+    try {
+      const response = await api.get('/sales/transactions/export_csv/', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'sales_report.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      console.error('Export failed', err);
+    }
+  };
+
   const fmt = (n) => Number(n || 0).toLocaleString('ar-EG', { maximumFractionDigits: 0 });
   const transactions = data?.results || data || [];
 
@@ -68,9 +101,14 @@ export default function SalesPage() {
     <AppShell>
       <div className="page-header">
         <h1 className="page-title">المبيعات</h1>
-        <button className="btn-primary" onClick={() => setModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <HiOutlinePlus size={18} /> عملية بيع جديدة
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button className="btn-secondary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <HiOutlineDownload size={18} /> تصدير CSV
+          </button>
+          <button className="btn-primary" onClick={() => setModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <HiOutlinePlus size={18} /> عملية بيع جديدة
+          </button>
+        </div>
       </div>
 
       {isLoading ? <div className="loading-spinner" /> : (
@@ -142,7 +180,12 @@ export default function SalesPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 2fr 1fr 1fr auto', gap: '0.5rem', alignItems: 'end' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontSize: '0.7rem' }}>بحث بـ SKU</label>
-                  <input placeholder="SKU..." value={item.sku || ''} onChange={e => updateItem(i, 'sku', e.target.value)} />
+                  <input 
+                    placeholder="SKU..." 
+                    value={item.sku || ''} 
+                    onChange={e => updateItem(i, 'sku', e.target.value)}
+                    onKeyDown={e => handleSKULookup(i, e)}
+                  />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontSize: '0.7rem' }}>المنتج</label>
@@ -196,33 +239,109 @@ export default function SalesPage() {
       {/* Detail Modal */}
       <Modal isOpen={!!detailModal} onClose={() => setDetailModal(null)} title={`تفاصيل البيع #${detailModal?.id}`}>
         {detailModal && (
+          <InvoiceView data={detailModal} fmt={fmt} />
+        )}
+      </Modal>
+
+      {/* Invoice Print Modal */}
+      <Modal isOpen={!!invoiceToPrint} onClose={() => setInvoiceToPrint(null)} title="فاتورة المبيعات">
+        {invoiceToPrint && (
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
-              <p><span style={{ color: 'var(--text-secondary)' }}>التاريخ:</span> {new Date(detailModal.transaction_date).toLocaleDateString('ar-EG')}</p>
-              <p><span style={{ color: 'var(--text-secondary)' }}>العميل:</span> {detailModal.customer_name || '—'}</p>
-              <p><span style={{ color: 'var(--text-secondary)' }}>طريقة الدفع:</span> {detailModal.payment_method_name}</p>
-              <p><span style={{ color: 'var(--text-secondary)' }}>الخصم العام:</span> {detailModal.overall_discount_percentage}%</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+              <button className="btn-primary" onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <HiOutlineDownload size={18} /> طباعة الفاتورة
+              </button>
             </div>
-            <table>
-              <thead><tr><th>المنتج</th><th>الكمية</th><th>السعر</th><th>الخصم</th><th>الإجمالي</th></tr></thead>
-              <tbody>
-                {(detailModal.items || []).map((item, i) => (
-                  <tr key={i}>
-                    <td>{item.product_name}</td>
-                    <td>{item.quantity_sold}</td>
-                    <td>{fmt(item.unit_price)} ج.م</td>
-                    <td>{item.item_discount_percentage}%</td>
-                    <td>{fmt(item.item_total_after_tax)} ج.م</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div style={{ marginTop: '1rem', textAlign: 'left', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-              <p style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--gold)' }}>الإجمالي: {fmt(detailModal.final_amount)} ج.م</p>
+            <div id="printable-invoice" className="printable-area">
+              <InvoiceView data={invoiceToPrint} fmt={fmt} isPrint={true} />
             </div>
           </div>
         )}
       </Modal>
+
+      <style jsx>{`
+        @media print {
+          body * { visibility: hidden; }
+          .printable-area, .printable-area * { visibility: visible; }
+          .printable-area { position: absolute; left: 0; top: 0; width: 100%; }
+          .btn-primary, .btn-secondary, .modal-close { display: none !important; }
+        }
+      `}</style>
     </AppShell>
+  );
+}
+
+function InvoiceView({ data, fmt, isPrint = false }) {
+  return (
+    <div style={{ padding: isPrint ? '2rem' : '0', color: isPrint ? '#000' : 'inherit', background: isPrint ? '#fff' : 'transparent' }}>
+      <div style={{ textAlign: 'center', marginBottom: '1.5rem', borderBottom: '2px solid var(--gold)', paddingBottom: '1rem' }}>
+        <h2 style={{ color: 'var(--gold)', marginBottom: '0.25rem' }}>LUXURY BOUTIQUE</h2>
+        <p style={{ fontSize: '0.85rem', color: isPrint ? '#666' : 'var(--text-secondary)' }}>فاتورة مبيعات رقم #{data.id}</p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div>
+          <p><strong>التاريخ:</strong> {new Date(data.transaction_date).toLocaleString('ar-EG')}</p>
+          <p><strong>العميل:</strong> {data.customer_name || 'عميل نقدي'}</p>
+        </div>
+        <div style={{ textAlign: 'left' }}>
+          <p><strong>طريقة الدفع:</strong> {data.payment_method_name}</p>
+        </div>
+      </div>
+
+      <table className="invoice-table">
+        <thead>
+          <tr>
+            <th>الصنف</th>
+            <th>SKU</th>
+            <th>الكمية</th>
+            <th>السعر</th>
+            <th>الإجمالي</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(data.items || []).map((item, i) => (
+            <tr key={i}>
+              <td style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                {item.product_image_url && (
+                  <img src={item.product_image_url} alt="" style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
+                )}
+                <span>{item.product_name}</span>
+              </td>
+              <td>{item.product_sku}</td>
+              <td style={{ textAlign: 'center' }}>{item.quantity_sold}</td>
+              <td>{fmt(item.unit_price)}</td>
+              <td style={{ fontWeight: 600 }}>{fmt(item.item_total_after_tax)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div style={{ marginTop: '2rem', borderTop: '2px solid #eee', paddingTop: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+          <span>المبلغ قبل الخصم:</span>
+          <span>{fmt(data.total_amount_before_tax)} ج.م</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+          <span>الخصم ({data.overall_discount_percentage}%):</span>
+          <span>-{fmt(data.total_amount_before_tax * data.overall_discount_percentage / 100)} ج.م</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.3rem', fontWeight: 800, color: 'var(--gold)', marginTop: '0.5rem' }}>
+          <span>الإجمالي النهائي:</span>
+          <span>{fmt(data.final_amount)} ج.م</span>
+        </div>
+      </div>
+
+      <div style={{ marginTop: '3rem', textAlign: 'center', fontSize: '0.8rem', color: '#888' }}>
+        <p>شكراً لشرائكم من متجرنا</p>
+      </div>
+
+      <style jsx>{`
+        .invoice-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        .invoice-table th { background: #f9f9f9; color: #333; text-align: right; padding: 0.75rem; border-bottom: 2px solid #eee; }
+        .invoice-table td { padding: 0.75rem; border-bottom: 1px solid #eee; }
+        :global(.dark-mode) .invoice-table th { background: rgba(255,255,255,0.05); color: var(--gold); }
+      `}</style>
+    </div>
   );
 }

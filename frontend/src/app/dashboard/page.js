@@ -123,7 +123,7 @@ export default function DashboardPage() {
             <tbody>
               {(topProducts || []).map((p, i) => (
                 <tr key={i}>
-                  <td>{p.product__model}</td>
+                  <td>{p.product__model_name}</td>
                   <td>{p.product__brand__name}</td>
                   <td>{p.total_qty}</td>
                   <td>{fmt(p.total_revenue)} ج.م</td>

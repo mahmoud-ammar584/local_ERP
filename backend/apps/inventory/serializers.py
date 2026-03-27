@@ -11,7 +11,6 @@ class ProductListSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     supplier_name = serializers.CharField(source='supplier.name', read_only=True)
     currency_code = serializers.CharField(source='currency.code', read_only=True)
-    # اضافه الحقل ده لضمان التوافق مع الفرونت إند القديم لو احتاجنا
     model = serializers.CharField(source='model_name', read_only=True)
     current_quantity = serializers.IntegerField(source='stock.current_quantity', read_only=True, default=0)
     cost_local = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
@@ -25,22 +24,29 @@ class ProductListSerializer(serializers.ModelSerializer):
             'id', 'sku', 'barcode', 'brand', 'brand_name', 'category', 'category_name',
             'model_name', 'model', 'gender', 'size', 'color', 'description', 
             'cost_foreign', 'currency', 'currency_code', 'customs_cost', 'shipping_cost',
-            'suggested_selling_price', 'total_cost', 'expected_profit',
+            'suggested_selling_price', 'profit_margin_percentage', 'cost_local', 'total_cost', 'expected_profit',
             'current_quantity', 'min_alert_quantity', 'is_low_stock', 
             'can_be_oversold', 'image', 'supplier', 'supplier_name', 'location'
         ]
 
 class ProductCreateSerializer(serializers.ModelSerializer):
-    initial_quantity = serializers.IntegerField(write_only=True, required=False, default=0)
+    current_quantity = serializers.IntegerField(required=False, write_only=True)
 
     class Meta:
         model = Product
         exclude = ['created_at', 'updated_at']
 
     def create(self, validated_data):
-        # FIXME: initial_quantity المفروض يتضاف في عمليات شراء (Purchase Orders) مش هنا
-        # بس سايبينه كدا للتبسيط في أول مرة
-        qty = validated_data.pop('initial_quantity', 0)
+        current_qty = validated_data.pop('current_quantity', 0)
         product = super().create(validated_data)
-        Stock.objects.create(product=product, current_quantity=qty)
+        Stock.objects.get_or_create(product=product, defaults={'current_quantity': current_qty})
+        return product
+
+    def update(self, instance, validated_data):
+        current_qty = validated_data.pop('current_quantity', None)
+        product = super().update(instance, validated_data)
+        if current_qty is not None:
+            stock, _ = Stock.objects.get_or_create(product=product)
+            stock.current_quantity = current_qty
+            stock.save()
         return product
