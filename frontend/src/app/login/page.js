@@ -48,29 +48,71 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label">Username</label>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{
+              display: 'block',
+              marginBottom: '0.5rem',
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              color: 'var(--text-primary)',
+            }}>Username</label>
             <input
               type="text" value={form.username}
               onChange={e => setForm({ ...form, username: e.target.value })}
               placeholder="admin"
               required
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                background: 'var(--dark-input)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '0.5rem',
+                color: 'var(--text-primary)',
+                fontSize: '1rem',
+              }}
             />
           </div>
-          <div className="form-group">
-            <label className="form-label">Password</label>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{
+              display: 'block',
+              marginBottom: '0.5rem',
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              color: 'var(--text-primary)',
+            }}>Password</label>
             <input
               type="password" value={form.password}
               onChange={e => setForm({ ...form, password: e.target.value })}
               placeholder="••••••"
               required
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                background: 'var(--dark-input)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '0.5rem',
+                color: 'var(--text-primary)',
+                fontSize: '1rem',
+              }}
             />
           </div>
           {error && (
             <p style={{ color: 'var(--accent-red)', fontSize: '0.85rem', marginBottom: '1rem' }}>{error}</p>
           )}
-          <button type="submit" className="btn-primary" disabled={loading}
-            style={{ width: '100%', padding: '0.75rem', fontSize: '1rem' }}>
+          <button type="submit" disabled={loading}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              fontSize: '1rem',
+              fontWeight: 600,
+              background: 'linear-gradient(135deg, var(--gold), var(--gold-light))',
+              color: '#000',
+              border: 'none',
+              borderRadius: '0.5rem',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.7 : 1,
+              transition: 'all 0.2s',
+            }}>
             {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>

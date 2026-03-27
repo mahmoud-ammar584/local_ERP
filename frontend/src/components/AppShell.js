@@ -1,22 +1,31 @@
 'use client';
 import { useAuth } from '@/app/providers';
 import Sidebar from '@/components/Sidebar';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 export default function AppShell({ children }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
-    if (!user) {
+  }, []);
+
+  useEffect(() => {
+    // Redirect to login if not authenticated and not loading
+    if (isClient && !loading && !user && !pathname.includes('/login')) {
       router.push('/login');
     }
-  }, [user, router]);
+  }, [isClient, loading, user, pathname, router]);
 
-  if (!isClient || !user) {
+  if (!isClient) {
+    return null;
+  }
+
+  if (loading) {
     return (
       <div style={{
         minHeight: '100vh',
@@ -30,10 +39,14 @@ export default function AppShell({ children }) {
           color: 'var(--text-secondary)',
         }}>
           <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⏳</div>
-          <p>جاري التحميل...</p>
+          <p>Loading...</p>
         </div>
       </div>
     );
+  }
+
+  if (!user) {
+    return null; // Redirect happening, show nothing
   }
 
   return (

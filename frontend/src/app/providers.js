@@ -9,22 +9,34 @@ export const useAuth = () => useContext(AuthContext);
 
 function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      api.get('/auth/me/')
-        .then(res => setUser(res.data))
-        .catch(() => localStorage.removeItem('token'))
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
+    // Only check for token on client-side
+    const checkAuth = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          setLoading(true);
+          const res = await api.get('/auth/me/');
+          setUser(res.data);
+        }
+      } catch (err) {
+        // Clear invalid token
+        localStorage.removeItem('token');
+      } finally {
+        setLoading(false);
+        setInitialized(true);
+      }
+    };
+
+    checkAuth();
   }, []);
 
   const login = async (username, password) => {
     try {
+      setLoading(true);
       const res = await api.post('/auth/login/', { username, password });
       const { token, user: userData } = res.data;
       
@@ -33,6 +45,8 @@ function AuthProvider({ children }) {
       return res.data;
     } catch (err) {
       throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -43,7 +57,7 @@ function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, initialized }}>
       {children}
     </AuthContext.Provider>
   );
