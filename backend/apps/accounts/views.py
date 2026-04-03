@@ -6,8 +6,6 @@ from rest_framework.response import Response
 from .serializers import LoginSerializer, UserSerializer
 
 from django_ratelimit.decorators import ratelimit
-from knox.views import LoginView as KnoxLoginView
-from knox.auth import TokenAuthentication
 from knox.models import AuthToken
 
 @api_view(['POST'])
@@ -47,12 +45,6 @@ def logout_all_view(request):
     AuthToken.objects.filter(user=request.user).delete()
     return Response({'message': 'All sessions terminated'})
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def logout_all_view(request):
-    # Terminate all active sessions for this user
-    AuthToken.objects.filter(user=request.user).delete()
-    return Response({'message': 'All sessions terminated'})
 
 @api_view(['GET'])
 def me_view(request):
