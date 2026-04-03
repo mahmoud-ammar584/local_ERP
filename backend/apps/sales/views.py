@@ -1,5 +1,5 @@
 import csv
-from django.http import HttpResponse
+from django.http import HttpResponse, FileResponse
 from django_filters import rest_framework as filters
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, permission_classes
@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from .models import SalesTransaction
 from .serializers import SalesTransactionSerializer, SalesTransactionCreateSerializer
 from apps.accounts.permissions import CashierSalesPermission
+from .utils import generate_invoice_pdf
 
 class SalesFilter(filters.FilterSet):
     transaction_date = filters.DateFromToRangeFilter()

@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from .models import SalesTransaction, SalesItem
 from apps.customers.models import Customer
-from apps.inventory.tasks import update_stock
 from apps.core.utils import log_activity
 
 class SalesItemSerializer(serializers.ModelSerializer):
@@ -90,12 +89,6 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
 
         for item_data in items_data:
             SalesItem.objects.create(sales_transaction=transaction, **item_data)
-            # --- ASYNC STOCK UPDATE (Phase 9) ---
-            variant = item_data.get('variant')
-            if not variant and item_data.get('product'):
-                variant = item_data['product'].variants.filter(is_active=True).order_by('id').first()
-            if variant:
-                update_stock(variant.id, -item_data['quantity_sold'])
 
         transaction.recalculate()
 

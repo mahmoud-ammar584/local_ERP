@@ -4,6 +4,17 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+def assign_default_category(apps, schema_editor):
+    ExpenseCategory = apps.get_model('expenses', 'ExpenseCategory')
+    Expense = apps.get_model('expenses', 'Expense')
+    default_cat, _ = ExpenseCategory.objects.get_or_create(
+        name='General',
+        defaults={'description': 'Default category — created during migration'}
+    )
+    Expense.objects.filter(expense_category__isnull=True).update(
+        expense_category=default_cat
+    )
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -15,9 +26,14 @@ class Migration(migrations.Migration):
             model_name='expense',
             name='category_old',
         ),
+        migrations.RunPython(assign_default_category, migrations.RunPython.noop),
         migrations.AlterField(
             model_name='expense',
             name='expense_category',
-            field=models.ForeignKey(default=5, on_delete=django.db.models.deletion.PROTECT, related_name='expenses', to='expenses.expensecategory'),
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name='expenses',
+                to='expenses.expensecategory',
+            ),
         ),
     ]

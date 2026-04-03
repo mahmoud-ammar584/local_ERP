@@ -1,11 +1,13 @@
 import os
 from pathlib import Path
+from decouple import config, Csv
+from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-erp-local-dev-key-change-in-production'
-DEBUG = True
-ALLOWED_HOSTS = ['*']
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-erp-local-dev-key-change-in-production')
+DEBUG = config('DEBUG', default=True, cast=bool)
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -15,10 +17,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'rest_framework.authtoken',
+    'knox',
     'corsheaders',
     'django_filters',
-    'background_task',
     'apps.core',
     'apps.accounts',
     'apps.settings_app',
@@ -66,11 +67,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DATABASE_NAME', 'erp1'),
-        'USER': os.environ.get('DATABASE_USER', 'postgres'),
-        'PASSWORD': os.environ.get('DATABASE_PASSWORD', '123456'),
-        'HOST': os.environ.get('DATABASE_HOST', 'localhost'),
-        'PORT': os.environ.get('DATABASE_PORT', '5432'),
+    'NAME': config('DATABASE_NAME', default='erp1'),
+    'USER': config('DATABASE_USER', default='postgres'),
+    'PASSWORD': config('DATABASE_PASSWORD', default=''),
+    'HOST': config('DATABASE_HOST', default='localhost'),
+    'PORT': config('DATABASE_PORT', default='5432'),
     }
 }
 
@@ -99,7 +100,7 @@ CORS_ALLOW_CREDENTIALS = True
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
+        'knox.auth.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
@@ -114,10 +115,18 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
 }
 
-# --- Caching ---
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'BACKEND': (
+            'django.core.cache.backends.locmem.LocMemCache'
+            if DEBUG
+            else 'django.core.cache.backends.db.DatabaseCache'
+        ),
         'LOCATION': 'my_cache_table',
     }
+}
+
+REST_KNOX = {
+    'TOKEN_TTL': timedelta(days=30),
+    'AUTO_REFRESH': True,
 }

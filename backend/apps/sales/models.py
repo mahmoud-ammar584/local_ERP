@@ -1,4 +1,6 @@
 from django.db import models
+from django.db.models import Sum as DbSum
+from django.core.exceptions import ValidationError
 from decimal import Decimal
 from apps.customers.models import Customer
 from apps.settings_app.models import PaymentMethod, TaxRate
@@ -93,6 +95,8 @@ class ReturnTransaction(models.Model):
     def __str__(self):
         return f"Return #{self.id} (Original Sale #{self.original_transaction.id})"
 
+from django.db.models import Sum
+
 class ReturnItem(models.Model):
     return_transaction = models.ForeignKey(ReturnTransaction, on_delete=models.CASCADE, related_name='items')
     sales_item = models.ForeignKey(SalesItem, on_delete=models.CASCADE)
@@ -100,11 +104,23 @@ class ReturnItem(models.Model):
     reason = models.CharField(max_length=255, blank=True, null=True)
 
     def save(self, *args, **kwargs):
+        # Prevent returning more units than were originally sold
+        already_returned = (
+            ReturnItem.objects
+            .filter(sales_item=self.sales_item)
+            .exclude(pk=self.pk)
+            .aggregate(total=DbSum('quantity_returned'))['total'] or 0
+        )
+        max_returnable = self.sales_item.quantity_sold - already_returned
+        if self.quantity_returned > max_returnable:
+            raise ValidationError(
+                f"Cannot return {self.quantity_returned} units. "
+                f"Maximum returnable for this item: {max_returnable}"
+            )
         is_new = self._state.adding
         super().save(*args, **kwargs)
         if is_new:
             from apps.inventory.tasks import update_stock
-            # Return item increases stock
             update_stock(self.sales_item.variant_id, self.quantity_returned)
 
     def __str__(self):
