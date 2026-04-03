@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import SalesTransaction, SalesItem
 from apps.customers.models import Customer
-from apps.inventory.tasks import update_stock_async
+from apps.inventory.tasks import update_stock
 from apps.core.utils import log_activity
 
 class SalesItemSerializer(serializers.ModelSerializer):
@@ -55,25 +55,33 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
         exclude = ['total_amount_before_tax', 'total_tax', 'final_amount', 'created_at', 'updated_at']
 
     def validate(self, data):
-        items_data = data.get('items', [])
-        for item in items_data:
-            product = item.get('product')
-            variant = item.get('variant')
-            qty_sold = item['quantity_sold']
-            
-            # If this flag is not enabled, we must ensure sufficient quantity is available.
-            # Stock is tracked at variant level; for backward compatibility,
-            # a product can be provided and will resolve to its first active variant.
-            target_variant = variant
-            if not target_variant and product:
-                target_variant = product.variants.filter(is_active=True).order_by('id').first()
+        from django.db import transaction
+        from apps.inventory.models import Stock
 
-            if product and not product.can_be_oversold and target_variant:
-                current_stock = getattr(getattr(target_variant, 'stock', None), 'current_quantity', 0)
-                if qty_sold > current_stock:
-                    raise serializers.ValidationError({
-                        'items': f'Requested quantity for product {product.sku} ({qty_sold}) is greater than available stock ({current_stock}).'
-                    })
+        items_data = data.get('items', [])
+        
+        with transaction.atomic():
+            for item in items_data:
+                product = item.get('product')
+                variant = item.get('variant')
+                qty_sold = item['quantity_sold']
+                
+                target_variant = variant
+                if not target_variant and product:
+                    target_variant = product.variants.filter(is_active=True).order_by('id').first()
+
+                if target_variant:
+                    # Use select_for_update to prevent race conditions during validation
+                    stock = Stock.objects.select_for_update().filter(variant=target_variant).first()
+                    current_qty = stock.current_quantity if stock else 0
+                    
+                    # Enforce oversold check: current_quantity >= quantity_sold UNLESS product.can_be_oversold is True
+                    can_oversell = target_variant.product.can_be_oversold if target_variant else (product.can_be_oversold if product else False)
+                    
+                    if not can_oversell and current_qty < qty_sold:
+                        raise serializers.ValidationError({
+                            'items': f"Insufficient stock for {target_variant.full_sku}. Available: {current_qty}"
+                        })
         return data
 
     def create(self, validated_data):
@@ -87,7 +95,7 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
             if not variant and item_data.get('product'):
                 variant = item_data['product'].variants.filter(is_active=True).order_by('id').first()
             if variant:
-                update_stock_async(variant.id, -item_data['quantity_sold'])
+                update_stock(variant.id, -item_data['quantity_sold'])
 
         transaction.recalculate()
 

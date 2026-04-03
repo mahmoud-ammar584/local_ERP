@@ -1,7 +1,7 @@
 from django.db import models
 from apps.settings_app.models import Supplier, Currency
 from apps.inventory.models import Product, ProductVariant
-from apps.inventory.tasks import update_stock_async
+from apps.inventory.tasks import update_stock
 
 class PurchaseOrder(models.Model):
     STATUS_CHOICES = [
@@ -34,7 +34,7 @@ class PurchaseOrder(models.Model):
                 item.received_quantity += qty_to_receive
                 item.save()
                 # --- ASYNC STOCK UPDATE (Phase 9) ---
-                update_stock_async(item.variant.id, qty_to_receive)
+                update_stock(item.variant.id, qty_to_receive)
 
     def __str__(self):
         return f'PO-{self.id} ({self.supplier.name})'

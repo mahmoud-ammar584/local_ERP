@@ -2,10 +2,12 @@ import csv
 from django.http import HttpResponse
 from django_filters import rest_framework as filters
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .models import SalesTransaction
 from .serializers import SalesTransactionSerializer, SalesTransactionCreateSerializer
+from apps.accounts.permissions import CashierSalesPermission
 
 class SalesFilter(filters.FilterSet):
     transaction_date = filters.DateFromToRangeFilter()
@@ -18,6 +20,7 @@ class SalesTransactionViewSet(viewsets.ModelViewSet):
     queryset = SalesTransaction.objects.select_related(
         'customer', 'payment_method'
     ).prefetch_related('items__product', 'items__tax_rate').all()
+    permission_classes = [IsAuthenticated, CashierSalesPermission]
     filterset_class = SalesFilter
     ordering = ['-transaction_date']
 
@@ -48,3 +51,14 @@ class SalesTransactionViewSet(viewsets.ModelViewSet):
             ])
             
         return response
+
+    @action(detail=True, methods=['get'])
+    def invoice(self, request, pk=None):
+        """Generate PDF invoice for a sale"""
+        sale = self.get_object()
+        pdf_buffer = generate_invoice_pdf(sale)
+        return FileResponse(
+            pdf_buffer, 
+            as_attachment=True, 
+            filename=f'invoice_{sale.id}.pdf'
+        )

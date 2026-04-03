@@ -6,8 +6,13 @@ from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from .serializers import LoginSerializer, UserSerializer
 
+from django_ratelimit.decorators import ratelimit
+from knox.views import LoginView as KnoxLoginView
+from knox.auth import TokenAuthentication
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@ratelimit(key='ip', rate='5/m', method='POST', block=True)
 def login_view(request):
     serializer = LoginSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -17,12 +22,23 @@ def login_view(request):
     )
     if not user:
         return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
-    token, _ = Token.objects.get_or_create(user=user)
-    return Response({'token': token.key, 'user': UserSerializer(user).data})
+    
+    # Knox handles token creation and expiry
+    from knox.models import AuthToken
+    instance, token = AuthToken.objects.create(user)
+    
+    return Response({
+        'token': token,
+        'user': UserSerializer(user).data,
+        'expiry': instance.expiry
+    })
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def logout_view(request):
-    request.user.auth_token.delete()
+    # Knox logout usually happens via its own views, but here we can do it manually or redirect
+    from knox.models import AuthToken
+    AuthToken.objects.filter(user=request.user).delete()
     return Response({'message': 'Logged out successfully'})
 
 @api_view(['GET'])

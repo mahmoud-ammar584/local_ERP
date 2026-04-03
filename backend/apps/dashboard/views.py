@@ -37,38 +37,58 @@ def summary(request):
     if cached_data:
         return Response(cached_data)
 
-    sales = SalesTransaction.objects.filter(transaction_date__range=[start, end])
-    total_sales = sales.aggregate(total=Sum('final_amount'))['total'] or 0
+    from django.db.models import Q, Sum, F, ExpressionWrapper
+    
+    # Efficient aggregation for Sales and Profits
+    sales_stats = SalesItem.objects.filter(
+        sales_transaction__transaction_date__range=[start, end]
+    ).annotate(
+        item_revenue=ExpressionWrapper(
+            F('unit_price') * F('quantity_sold') * (1 - F('item_discount_percentage') / 100.0),
+            output_field=DecimalField()
+        ),
+        item_profit=ExpressionWrapper(
+            (F('unit_price') * (1 - F('item_discount_percentage') / 100.0) - F('variant__product__cost_foreign') * F('variant__product__currency__exchange_rate_to_base') - F('variant__product__customs_cost') - F('variant__product__shipping_cost')) * F('quantity_sold'),
+            output_field=DecimalField()
+        )
+    ).aggregate(
+        total_revenue=Sum('item_revenue'),
+        total_profit=Sum('item_profit')
+    )
+
+    # Use the final_amount from SalesTransaction for total sales (includes transaction-level discounts if any)
+    total_sales = SalesTransaction.objects.filter(
+        transaction_date__range=[start, end]
+    ).aggregate(total=Sum('final_amount'))['total'] or 0
+    
+    total_profit = sales_stats['total_profit'] or 0
 
     expenses = Expense.objects.filter(expense_date__range=[start, end])
     total_expenses = expenses.aggregate(total=Sum('amount'))['total'] or 0
 
-    # Inventory stats
-    low_stock_count = 0
-    total_inventory_value = 0
-    from apps.inventory.models import ProductVariant # Import inside to avoid circular deps if any
-    for variant in ProductVariant.objects.select_related('product', 'stock', 'product__currency').all():
-        try:
-            qty = variant.stock.current_quantity
-            if qty <= variant.product.min_alert_quantity:
-                low_stock_count += 1
-            total_inventory_value += variant.product.total_cost * qty
-        except Stock.DoesNotExist:
-            low_stock_count += 1
-
-    # Calculate profit from sales items
-    total_profit = 0
-    for sale in sales:
-        total_profit += sale.total_profit
+    # Optimized Inventory stats
+    inventory_stats = Stock.objects.annotate(
+        item_value=ExpressionWrapper(
+            F('current_quantity') * (
+                F('variant__product__cost_foreign') * F('variant__product__currency__exchange_rate_to_base') + 
+                F('variant__product__customs_cost') + 
+                F('variant__product__shipping_cost')
+            ),
+            output_field=DecimalField()
+        )
+    ).aggregate(
+        total_value=Sum('item_value'),
+        low_stock_count=Count('id', filter=Q(current_quantity__lte=F('variant__product__min_alert_quantity')))
+    )
 
     result = {
         'total_sales': total_sales,
         'total_profit': total_profit,
         'total_expenses': total_expenses,
         'net_income': float(total_sales) - float(total_expenses),
-        'low_stock_count': low_stock_count,
-        'total_inventory_value': total_inventory_value,
-        'total_transactions': sales.count(),
+        'low_stock_count': inventory_stats['low_stock_count'],
+        'total_inventory_value': inventory_stats['total_value'] or 0,
+        'total_transactions': SalesTransaction.objects.filter(transaction_date__range=[start, end]).count(),
     }
     
     cache.set(cache_key, result, 300) # 5 minutes cache

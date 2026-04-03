@@ -51,6 +51,9 @@ class SalesItem(models.Model):
                 .first()
             )
         super().save(*args, **kwargs)
+        if self._state.adding and self.variant_id:
+            from apps.inventory.tasks import update_stock
+            update_stock(self.variant_id, -self.quantity_sold)
 
     @property
     def item_total_before_tax(self):
@@ -79,3 +82,30 @@ class SalesItem(models.Model):
         if self.product_id:
             return f'{self.product.sku} x {self.quantity_sold}'
         return f'Item x {self.quantity_sold}'
+
+class ReturnTransaction(models.Model):
+    return_date = models.DateTimeField(auto_now_add=True)
+    customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, related_name='returns')
+    original_transaction = models.ForeignKey(SalesTransaction, on_delete=models.CASCADE, related_name='returns')
+    reason = models.TextField(blank=True, null=True)
+    total_refund_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+
+    def __str__(self):
+        return f"Return #{self.id} (Original Sale #{self.original_transaction.id})"
+
+class ReturnItem(models.Model):
+    return_transaction = models.ForeignKey(ReturnTransaction, on_delete=models.CASCADE, related_name='items')
+    sales_item = models.ForeignKey(SalesItem, on_delete=models.CASCADE)
+    quantity_returned = models.IntegerField()
+    reason = models.CharField(max_length=255, blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        is_new = self._state.adding
+        super().save(*args, **kwargs)
+        if is_new:
+            from apps.inventory.tasks import update_stock
+            # Return item increases stock
+            update_stock(self.sales_item.variant_id, self.quantity_returned)
+
+    def __str__(self):
+        return f"Return Item: {self.sales_item.variant.full_sku} x {self.quantity_returned}"

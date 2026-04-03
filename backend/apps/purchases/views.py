@@ -3,8 +3,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import PurchaseOrder, PurchaseOrderItem
 from .serializers import PurchaseOrderSerializer, PurchaseOrderCreateSerializer, ReceiveItemsSerializer
-from apps.inventory.tasks import update_stock_async
+from apps.inventory.tasks import update_stock
 from apps.core.utils import log_activity
+
+from apps.accounts.permissions import CashierPurchasesPermission
+from rest_framework.permissions import IsAuthenticated
 
 class PurchaseOrderViewSet(viewsets.ModelViewSet):
     queryset = (
@@ -13,6 +16,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         .prefetch_related('items__variant', 'items__variant__product')
         .all()
     )
+    permission_classes = [IsAuthenticated, CashierPurchasesPermission]
     filterset_fields = ['status', 'supplier']
     ordering = ['-created_at']
 
@@ -39,7 +43,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             item.save()
             # --- ASYNC STOCK UPDATE (Phase 9) ---
             if item.variant_id:
-                update_stock_async(item.variant_id, qty)
+                update_stock(item.variant_id, qty)
 
         all_received = all(i.received_quantity >= i.ordered_quantity for i in order.items.all())
         any_received = any(i.received_quantity > 0 for i in order.items.all())

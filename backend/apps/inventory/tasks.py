@@ -1,19 +1,21 @@
-from background_task import background
 from django.db import transaction
-from .models import ProductVariant, Stock
+from django.db.models import F
+from .models import Stock
 
-@background(schedule=0)
-def update_stock_async(variant_id, quantity_change):
+def update_stock(variant_id: int, quantity_change: int) -> None:
     """
-    Update stock in the background to prevent UI blocking.
-    quantity_change: can be positive (purchases) or negative (sales).
+    Atomic stock update using F() expression to prevent race conditions.
+    Uses select_for_update to lock the row during the transaction.
     """
     with transaction.atomic():
-        try:
-            variant = ProductVariant.objects.select_related('product').get(id=variant_id)
-            stock, created = Stock.objects.get_or_create(variant=variant)
-            stock.current_quantity += quantity_change
-            stock.save()
-            print(f"Async Stock Update: Variant {variant.full_sku} updated by {quantity_change}. New total: {stock.current_quantity}")
-        except ProductVariant.DoesNotExist:
-            print(f"Async Stock Error: Variant {variant_id} not found")
+        stock, created = (
+            Stock.objects
+            .select_for_update()
+            .get_or_create(variant_id=variant_id)
+        )
+        stock.current_quantity = F('current_quantity') + quantity_change
+        stock.save(update_fields=['current_quantity', 'last_updated'])
+        
+        # Note: We don't print here in production, but keeping it for visibility during development
+        # stock.refresh_from_db() # If we need to print the new value
+        # print(f"Stock Update: Variant ID {variant_id} updated by {quantity_change}")
