@@ -10,12 +10,10 @@ phone_validator = RegexValidator(
 
 class Brand(models.Model):
     """Luxury brands - such as Gucci, Prada"""
-    name = models.CharField(max_length=200, unique=True)
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='brands', null=True, blank=True)
+    name = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
     logo_url = models.URLField(blank=True, null=True)
-
-    # TODO: Change logo_url to an ImageField named 'logo'
-    # This will allow local media or S3 storage integration later.
 
     def __str__(self):
         return self.name
@@ -23,7 +21,8 @@ class Brand(models.Model):
 
 class Category(models.Model):
     """Product categories - Bags, Shoes, Ready-to-wear, etc."""
-    name = models.CharField(max_length=200, unique=True)
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='categories', null=True, blank=True)
+    name = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
 
     class Meta:
@@ -34,11 +33,8 @@ class Category(models.Model):
 
 
 class Supplier(models.Model):
-    """
-    Suppliers - contact details and payment terms.
-    NOTE: payment_terms is currently a free-text field. It could be converted to choices,
-    but was left as text to accommodate unique terms for each supplier.
-    """
+    """Suppliers - contact details and payment terms."""
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='suppliers', null=True, blank=True)
     name = models.CharField(max_length=200)
     contact_person = models.CharField(max_length=200, blank=True, null=True)
     phone = models.CharField(
@@ -54,11 +50,9 @@ class Supplier(models.Model):
 
 
 class CustomerType(models.Model):
-    """
-    Customer tiers — VIP, Regular, Wholesale.
-    The discount_percentage is automatically applied to sales for this tier.
-    """
-    name = models.CharField(max_length=100, unique=True)
+    """Customer tiers — VIP, Regular, Wholesale."""
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='customer_types', null=True, blank=True)
+    name = models.CharField(max_length=100)
     discount_percentage = models.DecimalField(
         max_digits=5, decimal_places=2, default=0,
         help_text="Auto-applied discount percentage for this customer type (0–100)"
@@ -70,27 +64,21 @@ class CustomerType(models.Model):
 
 class PaymentMethod(models.Model):
     """Available payment methods"""
-    name = models.CharField(max_length=100, unique=True)
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='payment_methods', null=True, blank=True)
+    name = models.CharField(max_length=100)
 
     def __str__(self):
         return self.name
 
 
 class Currency(models.Model):
-    """
-    Currencies and exchange rates.
-    Base currency is Egyptian Pound (EGP) with an exchange rate to base = 1.0.
-    All other currencies are converted to EGP via exchange_rate_to_base.
-    """
-    code = models.CharField(max_length=10, unique=True)
+    """Currencies and exchange rates."""
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='currencies', null=True, blank=True)
+    code = models.CharField(max_length=10)
     name = models.CharField(max_length=100)
     exchange_rate_to_base = models.DecimalField(
         max_digits=12, decimal_places=4, default=1.0
     )
-
-    # TODO: Integrate external API for automatic exchange rate updates
-    # Consider openexchangerates.org or fixer.io.
-    # Currently, updates are performed manually via the settings page.
 
     class Meta:
         verbose_name_plural = 'Currencies'
@@ -101,8 +89,8 @@ class Currency(models.Model):
 
 class TaxRate(models.Model):
     """Tax rates - VAT and others"""
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='tax_rates', null=True, blank=True)
     name = models.CharField(max_length=100)
-    # rate stored as decimal: 0.14 represents 14%
     rate = models.DecimalField(max_digits=5, decimal_places=4)
 
     def __str__(self):
@@ -110,11 +98,8 @@ class TaxRate(models.Model):
 
 
 class StoreInfo(models.Model):
-    """
-    Store settings - Singleton model.
-    Only one instance exists in the database.
-    save() is overridden to ensure pk is always 1.
-    """
+    """Store settings for a company"""
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='store_info', null=True, blank=True)
     name = models.CharField(max_length=200)
     address = models.TextField()
     phone = models.CharField(max_length=50)
@@ -132,16 +117,16 @@ class StoreInfo(models.Model):
         verbose_name = 'Store Info'
         verbose_name_plural = 'Store Info'
 
-    def save(self, *args, **kwargs):
-        # Ensure only one record exists - Singleton pattern
-        self.pk = 1
-        super().save(*args, **kwargs)
-
     @classmethod
-    def load(cls):
-        """Retrieves store info or creates a default instance if none exists."""
-        obj, _ = cls.objects.get_or_create(pk=1, defaults={
-            'name': 'Boutique', 'address': '-', 'phone': '-', 'email': 'store@example.com'
+    def load(cls, company=None):
+        """Retrieves store info for a company or creates a default instance."""
+        if not company:
+            obj, _ = cls.objects.get_or_create(pk=1, defaults={
+                'name': 'Boutique', 'address': '-', 'phone': '-', 'email': 'store@example.com'
+            })
+            return obj
+        obj, _ = cls.objects.get_or_create(company=company, defaults={
+            'name': company.name, 'address': '-', 'phone': '-', 'email': 'store@example.com'
         })
         return obj
 
@@ -150,17 +135,15 @@ class StoreInfo(models.Model):
 
 
 class Season(models.Model):
-    """
-    Fashion season — used to group products into collections.
-    Example: SS25, FW25, Resort 2026
-    """
+    """Fashion season — used to group products into collections."""
     SEASON_TYPES = [
         ('SS', 'Spring/Summer'),
         ('FW', 'Fall/Winter'),
         ('RST', 'Resort'),
         ('PRE', 'Pre-Collection'),
     ]
-    name = models.CharField(max_length=100, unique=True)
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='seasons', null=True, blank=True)
+    name = models.CharField(max_length=100)
     season_type = models.CharField(max_length=4, choices=SEASON_TYPES)
     year = models.IntegerField()
     is_active = models.BooleanField(default=True)

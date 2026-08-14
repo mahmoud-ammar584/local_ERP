@@ -7,54 +7,62 @@ from .serializers import (
     CustomerTypeSerializer, PaymentMethodSerializer, CurrencySerializer,
     TaxRateSerializer, StoreInfoSerializer
 )
-from apps.accounts.permissions import AdminOnly
+from apps.core.mixins import TenantScopedViewSetMixin, AuditLogMixin
+from apps.accounts.permissions import HasModulePermission, AdminOnly
 from rest_framework.permissions import IsAuthenticated
 
-class BrandViewSet(viewsets.ModelViewSet):
+
+class BaseSettingsViewSet(TenantScopedViewSetMixin, AuditLogMixin, viewsets.ModelViewSet):
+    module_name = 'settings'
+    permission_classes = [IsAuthenticated, HasModulePermission]
+
+
+class BrandViewSet(BaseSettingsViewSet):
     queryset = Brand.objects.all()
     serializer_class = BrandSerializer
-    permission_classes = [IsAuthenticated, AdminOnly]
     search_fields = ['name']
 
-class CategoryViewSet(viewsets.ModelViewSet):
+
+class CategoryViewSet(BaseSettingsViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    permission_classes = [IsAuthenticated, AdminOnly]
     search_fields = ['name']
 
-class SupplierViewSet(viewsets.ModelViewSet):
+
+class SupplierViewSet(BaseSettingsViewSet):
     queryset = Supplier.objects.all()
     serializer_class = SupplierSerializer
-    permission_classes = [IsAuthenticated, AdminOnly]
     search_fields = ['name', 'contact_person']
 
-class CustomerTypeViewSet(viewsets.ModelViewSet):
+
+class CustomerTypeViewSet(BaseSettingsViewSet):
     queryset = CustomerType.objects.all()
     serializer_class = CustomerTypeSerializer
-    permission_classes = [IsAuthenticated, AdminOnly]
 
-class PaymentMethodViewSet(viewsets.ModelViewSet):
+
+class PaymentMethodViewSet(BaseSettingsViewSet):
     queryset = PaymentMethod.objects.all()
     serializer_class = PaymentMethodSerializer
-    permission_classes = [IsAuthenticated, AdminOnly]
 
-class CurrencyViewSet(viewsets.ModelViewSet):
+
+class CurrencyViewSet(BaseSettingsViewSet):
     queryset = Currency.objects.all()
     serializer_class = CurrencySerializer
-    permission_classes = [IsAuthenticated, AdminOnly]
 
-class TaxRateViewSet(viewsets.ModelViewSet):
+
+class TaxRateViewSet(BaseSettingsViewSet):
     queryset = TaxRate.objects.all()
     serializer_class = TaxRateSerializer
-    permission_classes = [IsAuthenticated, AdminOnly]
+
 
 @api_view(['GET', 'PUT'])
-@permission_classes([IsAuthenticated, AdminOnly])
+@permission_classes([IsAuthenticated, HasModulePermission])
 def store_info_view(request):
-    store = StoreInfo.load()
+    company = getattr(request.user.profile, 'company', None)
+    store = StoreInfo.load(company=company)
     if request.method == 'GET':
         return Response(StoreInfoSerializer(store).data)
     serializer = StoreInfoSerializer(store, data=request.data)
     serializer.is_valid(raise_exception=True)
-    serializer.save()
+    serializer.save(company=company)
     return Response(serializer.data)

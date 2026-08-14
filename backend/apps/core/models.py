@@ -4,9 +4,11 @@ from django.contrib.auth.models import User
 class UserActivity(models.Model):
     """Activity log - tracks user actions for audit trails"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='activities')
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='activities', null=True, blank=True)
     action = models.CharField(max_length=255)  # Action description
     model_name = models.CharField(max_length=100, blank=True, null=True)
     object_id = models.IntegerField(blank=True, null=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
     details = models.JSONField(blank=True, null=True)
 

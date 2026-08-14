@@ -7,8 +7,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .models import SalesTransaction
 from .serializers import SalesTransactionSerializer, SalesTransactionCreateSerializer
-from apps.accounts.permissions import CashierSalesPermission
-from .utils import generate_invoice_pdf
+from apps.core.mixins import TenantScopedViewSetMixin, AuditLogMixin
+from apps.accounts.permissions import HasModulePermission
 
 class SalesFilter(filters.FilterSet):
     transaction_date = filters.DateFromToRangeFilter()
@@ -17,11 +17,12 @@ class SalesFilter(filters.FilterSet):
         model = SalesTransaction
         fields = ['customer', 'payment_method', 'transaction_date']
 
-class SalesTransactionViewSet(viewsets.ModelViewSet):
+class SalesTransactionViewSet(TenantScopedViewSetMixin, AuditLogMixin, viewsets.ModelViewSet):
+    module_name = 'sales'
     queryset = SalesTransaction.objects.select_related(
         'customer', 'payment_method'
     ).prefetch_related('items__product', 'items__tax_rate').all()
-    permission_classes = [IsAuthenticated, CashierSalesPermission]
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filterset_class = SalesFilter
     ordering = ['-transaction_date']
 

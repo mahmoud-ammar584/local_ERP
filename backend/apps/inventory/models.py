@@ -9,6 +9,7 @@ class Product(models.Model):
     Each product has a unique SKU and optional barcode.
     Cost is calculated from foreign currency + customs + shipping.
     """
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='products', null=True, blank=True)
     brand = models.ForeignKey(Brand, on_delete=models.PROTECT, related_name='products')
     category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name='products')
     season = models.ForeignKey(

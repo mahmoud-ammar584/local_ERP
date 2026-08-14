@@ -1,49 +1,47 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from .models import Profile, Company, Invitation
+
 
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField()
 
+
+class ProfileSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source='company.name', read_only=True)
+
+    class Meta:
+        model = Profile
+        fields = ['company', 'company_name', 'role', 'permissions']
+
+
 class UserSerializer(serializers.ModelSerializer):
-    role = serializers.ChoiceField(choices=['admin', 'cashier'], required=False)
-    password = serializers.CharField(write_only=True, required=False)
+    role = serializers.CharField(source='profile.role', read_only=True)
+    company_id = serializers.IntegerField(source='profile.company.id', read_only=True)
+    company_name = serializers.CharField(source='profile.company.name', read_only=True)
+    permissions = serializers.JSONField(source='profile.permissions', read_only=True)
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'password']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'company_id', 'company_name', 'permissions']
 
-    def create(self, validated_data):
-        role = validated_data.pop('role', 'cashier')
-        password = validated_data.pop('password', None)
-        user = User.objects.create(**validated_data)
-        if password:
-            user.set_password(password)
-            user.save()
-        
-        from .models import Profile
-        Profile.objects.update_or_create(user=user, defaults={'role': role})
-        return user
 
-    def update(self, instance, validated_data):
-        role = validated_data.pop('role', None)
-        password = validated_data.pop('password', None)
-        
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        
-        if password:
-            instance.set_password(password)
-        
-        instance.save()
-        
-        if role:
-            from .models import Profile
-            Profile.objects.update_or_create(user=instance, defaults={'role': role})
-        
-        return instance
+class InvitationCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Invitation
+        fields = ['id', 'email', 'role', 'permissions', 'created_at', 'expires_at', 'is_used']
+        read_only_fields = ['id', 'created_at', 'expires_at', 'is_used']
 
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        data['role'] = getattr(instance.profile, 'role', 'cashier') if hasattr(instance, 'profile') else 'cashier'
-        return data
+
+class AcceptInvitationSerializer(serializers.Serializer):
+    token = serializers.CharField()
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True)
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_password(self, value):
+        validate_password(value)
+        return value

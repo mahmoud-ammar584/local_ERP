@@ -44,6 +44,12 @@ export function Navbar({ workspaceName, onLangToggle }: NavbarProps) {
             </span>
           </>
         )}
+
+        <nav className="flex items-center gap-4 ml-6 text-xs">
+          <a href="/dashboard" className="text-zinc-400 hover:text-white transition">Dashboard</a>
+          <a href="/users" className="text-zinc-400 hover:text-white transition">Users & Invites</a>
+          <a href="/audit" className="text-zinc-400 hover:text-white transition">Audit Logs</a>
+        </nav>
       </div>
 
       {/* Right: Controls */}

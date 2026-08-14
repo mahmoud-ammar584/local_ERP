@@ -2,9 +2,10 @@ from django.db import models
 from apps.settings_app.models import CustomerType
 
 class Customer(models.Model):
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='customers', null=True, blank=True)
     name = models.CharField(max_length=200)
-    phone = models.CharField(max_length=50, unique=True, blank=True, null=True)
-    email = models.EmailField(unique=True, blank=True, null=True)
+    phone = models.CharField(max_length=50, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
     customer_type = models.ForeignKey(CustomerType, on_delete=models.PROTECT, related_name='customers')
     address = models.TextField(blank=True, null=True)
     preferred_brands = models.TextField(blank=True, null=True)

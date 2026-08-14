@@ -2,6 +2,7 @@ from django.db import models
 from apps.settings_app.models import PaymentMethod
 
 class ExpenseCategory(models.Model):
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='expense_categories', null=True, blank=True)
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True, null=True)
 
@@ -12,6 +13,7 @@ class ExpenseCategory(models.Model):
         verbose_name_plural = "Expense Categories"
 
 class Expense(models.Model):
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='expenses', null=True, blank=True)
     expense_date = models.DateField()
     expense_category = models.ForeignKey(ExpenseCategory, on_delete=models.PROTECT, related_name='expenses')
     description = models.TextField()

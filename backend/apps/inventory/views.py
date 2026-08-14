@@ -5,12 +5,14 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from .models import Product, Stock
 from .serializers import ProductListSerializer, ProductCreateSerializer
 
-from apps.accounts.permissions import CashierInventoryPermission
+from apps.core.mixins import TenantScopedViewSetMixin, AuditLogMixin
+from apps.accounts.permissions import HasModulePermission
 from rest_framework.permissions import IsAuthenticated
 
-class ProductViewSet(viewsets.ModelViewSet):
+class ProductViewSet(AuditLogMixin, TenantScopedViewSetMixin, viewsets.ModelViewSet):
+    module_name = 'inventory'
     queryset = Product.objects.select_related('brand', 'category', 'supplier', 'currency').prefetch_related('variants', 'variants__stock').all()
-    permission_classes = [IsAuthenticated, CashierInventoryPermission]
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filterset_fields = ['brand', 'category', 'supplier', 'season']
     search_fields = ['sku', 'variants__sku_suffix', 'model_name']
     ordering_fields = ['created_at', 'suggested_selling_price', 'model_name']

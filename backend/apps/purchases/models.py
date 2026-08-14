@@ -4,6 +4,7 @@ from apps.inventory.models import Product, ProductVariant
 from apps.inventory.tasks import update_stock
 
 class PurchaseOrder(models.Model):
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='purchase_orders', null=True, blank=True)
     STATUS_CHOICES = [
         ('P', 'Pending'), ('R', 'Received'),
         ('PR', 'Partially Received'), ('C', 'Cancelled'),

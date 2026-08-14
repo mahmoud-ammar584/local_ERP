@@ -7,6 +7,7 @@ from apps.settings_app.models import PaymentMethod, TaxRate
 from apps.inventory.models import Product, ProductVariant
 
 class SalesTransaction(models.Model):
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='sales_transactions', null=True, blank=True)
     transaction_date = models.DateTimeField()
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name='sales')
     payment_method = models.ForeignKey(PaymentMethod, on_delete=models.PROTECT)

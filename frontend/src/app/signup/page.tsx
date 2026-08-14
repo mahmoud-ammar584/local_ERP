@@ -1,17 +1,52 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { setTokens } from '@/lib/auth'
-import { fetchJson, ApiError } from '@/lib/http'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function SignupPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const token = searchParams.get('token')
+
+  const [verifying, setVerifying] = useState(true)
+  const [inviteData, setInviteData] = useState<{ valid: boolean; email: string; company_name: string; role: string } | null>(null)
+  const [verifyError, setVerifyError] = useState('')
+
   const [form, setForm] = useState({
-    email: '', password: '', first_name: '', last_name: '', organization_name: ''
+    username: '',
+    password: '',
+    first_name: '',
+    last_name: ''
   })
-  const [error, setError]   = useState('')
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState(false)
+
+  useEffect(() => {
+    if (!token) {
+      setVerifying(false)
+      setVerifyError('Self-registration is disabled. Access is by email invitation only. Please contact your store administrator for an invitation link.')
+      return
+    }
+
+    async function verifyToken() {
+      try {
+        const res = await fetch(`http://localhost:8000/api/auth/invitations/verify/?token=${encodeURIComponent(token!)}`)
+        const data = await res.json()
+        if (!res.ok) {
+          setVerifyError(data.error || 'Invalid or expired invitation token.')
+        } else {
+          setInviteData(data)
+        }
+      } catch (err) {
+        setVerifyError('Network error verifying invitation token.')
+      } finally {
+        setVerifying(false)
+      }
+    }
+
+    verifyToken()
+  }, [token])
 
   const update = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }))
@@ -20,90 +55,145 @@ export default function SignupPage() {
     e.preventDefault()
     setError('')
     setLoading(true)
+
     try {
-      const data = await fetchJson<{ access: string; refresh: string; workspace_id?: string }>(
-        '/api/v1/auth/register/',
-        { method: 'POST', body: JSON.stringify(form), skipAuth: true }
-      )
-      setTokens(data.access, data.refresh)
-      if (data.workspace_id) localStorage.setItem('sarih_workspace_id', data.workspace_id)
-      router.push('/dashboard')
-    } catch (err) {
-      if (err instanceof ApiError && err.details && typeof err.details === 'object') {
-        const msg = Object.entries(err.details as Record<string, string[]>)
-          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(' ') : v}`)
-          .join(' · ')
-        setError(msg || err.message)
+      const res = await fetch('http://localhost:8000/api/auth/invitations/accept/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          username: form.username,
+          password: form.password,
+          first_name: form.first_name,
+          last_name: form.last_name
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const msg = data.error || (data.password ? data.password.join(' ') : 'Failed to create account')
+        setError(msg)
       } else {
-        setError(err instanceof ApiError ? err.message : 'Registration failed.')
+        setSuccess(true)
+        setTimeout(() => router.push('/login'), 2000)
       }
+    } catch (err) {
+      setError('An error occurred during account creation.')
     } finally {
       setLoading(false)
     }
   }
 
-  return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
-      <div className="fixed left-0 top-0 bottom-0 w-[3px] bg-signal-amber" />
-      <div className="w-full max-w-[440px]">
-        <div className="mb-8">
-          <div className="text-[7pt] font-bold tracking-[0.18em] text-signal-amber mb-3 uppercase">
-            صريح  ·  SARIH
-          </div>
-          <h1 className="text-[24pt] font-bold text-text-primary leading-none">
-            Create your workspace.
-          </h1>
-          <p className="text-[10pt] text-text-muted mt-2">
-            Full access. No trial period theater.
-          </p>
-        </div>
-        <div className="h-px bg-void-border mb-6" />
+  if (verifying) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center p-4 text-white">
+        <div className="animate-pulse text-zinc-400">Verifying invitation link...</div>
+      </div>
+    )
+  }
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="p-3 border border-signal-critical/40 bg-[#1A0000] rounded-sm text-[9pt] text-signal-critical">
-              ✕ {error}
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            {(['first_name', 'last_name'] as const).map(k => (
-              <div key={k}>
-                <label className="block text-[8pt] font-bold uppercase tracking-[0.1em] text-text-muted mb-1.5">
-                  {k === 'first_name' ? 'First Name' : 'Last Name'}
-                </label>
-                <input id={`signup-${k}`} type="text" value={form[k]} onChange={update(k)} className="sarih-input" />
-              </div>
-            ))}
+  if (verifyError) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center p-4 text-white">
+        <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-xl p-6 text-center shadow-xl">
+          <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto mb-4 text-xl">✕</div>
+          <h2 className="text-xl font-bold mb-2">Invitation Error</h2>
+          <p className="text-zinc-400 text-sm mb-6">{verifyError}</p>
+          <a href="/login" className="inline-block px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm transition">
+            Go to Login
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-[#09090b] flex items-center justify-center p-4 text-white">
+      <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-xl p-8 shadow-2xl">
+        <div className="mb-6">
+          <div className="text-xs uppercase tracking-widest font-semibold text-amber-400 mb-1">
+            Accept Invitation
           </div>
-          {[
-            { k: 'email',             label: 'Email',                 type: 'email',    placeholder: 'you@company.com', required: true },
-            { k: 'password',          label: 'Password',              type: 'password', placeholder: 'Min. 8 characters', required: true },
-            { k: 'organization_name', label: 'Organization',          type: 'text',     placeholder: 'Your company name', required: true },
-          ].map(({ k, label, type, placeholder, required }) => (
-            <div key={k}>
-              <label className="block text-[8pt] font-bold uppercase tracking-[0.1em] text-text-muted mb-1.5">
-                {label}
-              </label>
+          <h1 className="text-2xl font-bold">Join {inviteData?.company_name}</h1>
+          <p className="text-xs text-zinc-400 mt-1">Set up your account credentials to access the ERP</p>
+        </div>
+
+        {success ? (
+          <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-400 text-center text-sm">
+            Account created successfully! Redirecting to login...
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-xs">
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-semibold text-zinc-400 mb-1">Email Address</label>
               <input
-                id={`signup-${k}`}
-                type={type}
-                value={form[k as keyof typeof form]}
-                onChange={update(k as keyof typeof form)}
-                className="sarih-input"
-                placeholder={placeholder}
-                required={required}
-                minLength={k === 'password' ? 8 : undefined}
+                type="email"
+                value={inviteData?.email || ''}
+                disabled
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-500 text-sm cursor-not-allowed"
               />
             </div>
-          ))}
-          <button id="signup-submit" type="submit" disabled={loading} className="sarih-btn-primary w-full mt-2">
-            {loading ? 'Creating workspace...' : 'Create Account  →'}
-          </button>
-        </form>
-        <p className="text-center text-[9pt] text-text-muted mt-6">
-          Already have access?{' '}
-          <a href="/login" className="text-signal-amber hover:underline">Sign in</a>
-        </p>
+
+            <div>
+              <label className="block text-xs font-semibold text-zinc-400 mb-1">Username</label>
+              <input
+                type="text"
+                value={form.username}
+                onChange={update('username')}
+                required
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:outline-none focus:border-amber-500"
+                placeholder="Choose a username"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1">First Name</label>
+                <input
+                  type="text"
+                  value={form.first_name}
+                  onChange={update('first_name')}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1">Last Name</label>
+                <input
+                  type="text"
+                  value={form.last_name}
+                  onChange={update('last_name')}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-zinc-400 mb-1">Password</label>
+              <input
+                type="password"
+                value={form.password}
+                onChange={update('password')}
+                required
+                minLength={10}
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:outline-none focus:border-amber-500"
+                placeholder="Min. 10 characters"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-lg text-sm transition mt-2"
+            >
+              {loading ? 'Creating Account...' : 'Complete Signup'}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   )

@@ -6,17 +6,19 @@ from .serializers import PurchaseOrderSerializer, PurchaseOrderCreateSerializer,
 from apps.inventory.tasks import update_stock
 from apps.core.utils import log_activity
 
-from apps.accounts.permissions import CashierPurchasesPermission
+from apps.core.mixins import TenantScopedViewSetMixin, AuditLogMixin
+from apps.accounts.permissions import HasModulePermission
 from rest_framework.permissions import IsAuthenticated
 
-class PurchaseOrderViewSet(viewsets.ModelViewSet):
+class PurchaseOrderViewSet(TenantScopedViewSetMixin, AuditLogMixin, viewsets.ModelViewSet):
+    module_name = 'purchases'
     queryset = (
         PurchaseOrder.objects
         .select_related('supplier', 'currency')
         .prefetch_related('items__variant', 'items__variant__product')
         .all()
     )
-    permission_classes = [IsAuthenticated, CashierPurchasesPermission]
+    permission_classes = [IsAuthenticated, HasModulePermission]
     filterset_fields = ['status', 'supplier']
     ordering = ['-created_at']
 
