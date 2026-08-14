@@ -46,6 +46,15 @@ def logout_all_view(request):
     return Response({'message': 'All sessions terminated'})
 
 
+from django.contrib.auth.models import User
+from rest_framework import viewsets
+from .permissions import AdminOnly
+
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all().order_by('-id')
+    serializer_class = UserSerializer
+    permission_classes = [AdminOnly]
+
 @api_view(['GET'])
 def me_view(request):
     return Response(UserSerializer(request.user).data)

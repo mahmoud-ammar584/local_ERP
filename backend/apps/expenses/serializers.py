@@ -1,5 +1,10 @@
 from rest_framework import serializers
-from .models import Expense
+from .models import Expense, ExpenseCategory
+
+class ExpenseCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExpenseCategory
+        fields = '__all__'
 
 class ExpenseSerializer(serializers.ModelSerializer):
     payment_method_name = serializers.CharField(source='payment_method.name', read_only=True)

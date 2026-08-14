@@ -1,292 +1,127 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&family=Inter:wght@300;400;600;700&family=Readex+Pro:wght@300;400;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ── Base Reset ─────────────────────────────── */
 :root {
-  --gold: #c9a84c;
-  --gold-light: #d4b96a;
-  --dark: #1a1a2e;
-  --dark-card: #16213e;
-  --dark-sidebar: #0f0f23;
-  --dark-input: #1e2a4a;
-  --text-primary: #e8e8e8;
-  --text-secondary: #a0a0b0;
-  --accent-green: #2ecc71;
-  --accent-red: #e74c3c;
-  --border-color: #2a2a4a;
+  --void:     #050505;
+  --card:     #111111;
+  --card2:    #1A1A1A;
+  --border:   #2A2A2A;
+  --text:     #F0F0F0;
+  --muted:    #777777;
+  --amber:    #F59E0B;
+  --emerald:  #10B981;
+  --critical: #DC2626;
 }
 
 * {
   box-sizing: border-box;
 }
 
-body {
-  background-color: var(--dark);
-  color: var(--text-primary);
-  font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
-  direction: ltr;
-  margin: 0;
-  padding: 0;
+html, body {
+  background-color: #050505;
+  color: #F0F0F0;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* RTL Support */
-html[dir="rtl"] body {
-  direction: rtl;
-  font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+/* Arabic direction */
+[dir="rtl"] body,
+[lang="ar"] body {
+  font-family: 'Cairo', 'Readex Pro', sans-serif;
 }
 
-html[dir="rtl"] {
-  direction: rtl;
-  text-align: right;
+/* ── Scrollbar ─────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-html[dir="ltr"] {
-  direction: ltr;
-  text-align: left;
+::-webkit-scrollbar-track {
+  background: #050505;
 }
 
-input, select, textarea {
-  background-color: var(--dark-input);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  width: 100%;
-  transition: border-color 0.2s;
+::-webkit-scrollbar-thumb {
+  background: #2A2A2A;
+  border-radius: 3px;
 }
 
-input:focus, select:focus, textarea:focus {
-  outline: none;
-  border-color: var(--gold);
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
+/* ── Sarih Component Classes ───────────────── */
+@layer components {
 
-th {
-  background-color: var(--dark-sidebar);
-  padding: 0.75rem 1rem;
-  text-align: right;
-  font-weight: 600;
-  color: var(--gold);
-  border-bottom: 2px solid var(--border-color);
-}
+  /* Card */
+  .sarih-card {
+    @apply bg-void-card border border-void-border rounded-card;
+  }
 
-td {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--border-color);
-}
+  /* Amber accent left border — the "verdict bar" */
+  .verdict-bar {
+    @apply border-l-2 border-signal-amber pl-4;
+  }
 
-tr:hover {
-  background-color: rgba(201, 168, 76, 0.05);
-}
+  /* Label tag */
+  .sarih-label {
+    @apply text-[7pt] font-bold uppercase tracking-[0.12em] text-signal-amber;
+  }
 
-.btn-primary {
-  background: linear-gradient(135deg, var(--gold), var(--gold-light));
-  color: var(--dark);
-  font-weight: 600;
-  padding: 0.5rem 1.5rem;
-  border-radius: 0.5rem;
-  border: none;
-  cursor: pointer;
-  transition: all 0.3s;
-}
+  /* Verdict text — the main judgment */
+  .sarih-verdict {
+    @apply text-[14pt] font-semibold text-text-primary leading-snug;
+  }
 
-.btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 15px rgba(201, 168, 76, 0.3);
-}
+  /* Muted context text */
+  .sarih-context {
+    @apply text-[9pt] font-light text-text-muted leading-relaxed;
+  }
 
-.btn-danger {
-  background: var(--accent-red);
-  color: white;
-  font-weight: 600;
-  padding: 0.5rem 1.5rem;
-  border-radius: 0.5rem;
-  border: none;
-  cursor: pointer;
-  transition: all 0.3s;
-}
+  /* Data value — large number */
+  .sarih-data {
+    @apply text-[28pt] font-light text-text-primary leading-none;
+  }
 
-.btn-secondary {
-  background: var(--dark-input);
-  color: var(--text-primary);
-  font-weight: 500;
-  padding: 0.5rem 1.5rem;
-  border-radius: 0.5rem;
-  border: 1px solid var(--border-color);
-  cursor: pointer;
-  transition: all 0.3s;
-}
+  /* Status pill */
+  .sarih-pill-amber    { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-[#1A0D00] text-signal-amber text-[7pt] font-bold tracking-wide; }
+  .sarih-pill-stable   { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-[#001A0D] text-signal-stable text-[7pt] font-bold tracking-wide; }
+  .sarih-pill-critical { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-[#1A0000] text-signal-critical text-[7pt] font-bold tracking-wide; }
 
-.btn-secondary:hover {
-  border-color: var(--gold);
-}
+  /* Divider */
+  .sarih-divider { @apply border-t border-void-border; }
 
-.card {
-  background: var(--dark-card);
-  border: 1px solid var(--border-color);
-  border-radius: 0.75rem;
-  padding: 1.5rem;
-  transition: all 0.3s;
-}
+  /* Button — ghost */
+  .sarih-btn {
+    @apply flex items-center gap-2 px-4 py-2 rounded-sm
+           bg-void-zinc border border-void-border
+           text-sm text-text-muted
+           hover:border-[#444] hover:text-text-primary
+           transition-colors duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
 
-.card:hover {
-  border-color: rgba(201, 168, 76, 0.3);
-}
+  /* Button — amber primary */
+  .sarih-btn-primary {
+    @apply flex items-center justify-center gap-2 px-4 py-2 rounded-sm
+           bg-signal-amber text-[#050505]
+           text-sm font-semibold
+           hover:bg-[#D97706]
+           transition-colors duration-150
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
 
-.kpi-card {
-  background: linear-gradient(135deg, var(--dark-card), var(--dark-sidebar));
-  border: 1px solid var(--border-color);
-  border-radius: 0.75rem;
-  padding: 1.25rem;
-  position: relative;
-  overflow: hidden;
-}
-
-.kpi-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 4px;
-  height: 100%;
-  background: var(--gold);
-}
-
-.badge {
-  display: inline-block;
-  padding: 0.2rem 0.6rem;
-  border-radius: 1rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.badge-success {
-  background: rgba(46, 204, 113, 0.15);
-  color: var(--accent-green);
-}
-
-.badge-danger {
-  background: rgba(231, 76, 60, 0.15);
-  color: var(--accent-red);
-}
-
-.badge-warning {
-  background: rgba(201, 168, 76, 0.15);
-  color: var(--gold);
-}
-
-.low-stock-row {
-  background-color: rgba(231, 76, 60, 0.08) !important;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-}
-
-.page-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--gold);
-}
-
-.form-group {
-  margin-bottom: 1rem;
-}
-
-.form-label {
-  display: block;
-  margin-bottom: 0.35rem;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 50;
-  backdrop-filter: blur(4px);
-}
-
-.modal-content {
-  background: var(--dark-card);
-  border: 1px solid var(--border-color);
-  border-radius: 1rem;
-  padding: 2rem;
-  width: 90%;
-  max-width: 600px;
-  max-height: 80vh;
-  overflow-y: auto;
-  animation: modalIn 0.2s ease-out;
-}
-
-@keyframes modalIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-.search-box {
-  position: relative;
-}
-
-.search-box input {
-  padding-right: 2.5rem;
-}
-
-.pagination {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: center;
-  margin-top: 1rem;
-  align-items: center;
-}
-
-.pagination button {
-  padding: 0.4rem 0.8rem;
-  border-radius: 0.375rem;
-  border: 1px solid var(--border-color);
-  background: var(--dark-input);
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.pagination button:hover:not(:disabled) {
-  border-color: var(--gold);
-}
-
-.pagination button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.loading-spinner {
-  display: flex;
-  justify-content: center;
-  padding: 3rem;
-}
-
-.loading-spinner::after {
-  content: '';
-  width: 2.5rem;
-  height: 2.5rem;
-  border: 3px solid var(--border-color);
-  border-top-color: var(--gold);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
+  /* Input */
+  .sarih-input {
+    @apply w-full px-4 py-3
+           bg-void-card2 border border-void-border rounded-sm
+           text-text-primary text-sm
+           placeholder-text-muted
+           focus:outline-none focus:border-[#444]
+           transition-colors;
+  }
 }

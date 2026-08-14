@@ -11,7 +11,7 @@ from apps.settings_app.models import (
 from apps.inventory.models import Product, ProductVariant, Stock
 from apps.customers.models import Customer
 from apps.sales.models import SalesTransaction, SalesItem
-from apps.expenses.models import Expense
+from apps.expenses.models import Expense, ExpenseCategory
 
 
 class Command(BaseCommand):
@@ -21,11 +21,7 @@ class Command(BaseCommand):
         parser.add_argument('--no-input', action='store_true')
 
     def handle(self, *args, **options):
-        if Brand.objects.exists() and not options.get('no_input'):
-            self.stdout.write('Data already exists. Use --no-input to skip this check.')
-            return
-
-        if Brand.objects.exists():
+        if Expense.objects.exists():
             self.stdout.write('Data already seeded. Skipping.')
             return
 
@@ -106,8 +102,9 @@ class Command(BaseCommand):
         variants = []
         for sku, brand, cat, model, gender, size, color, curr, cost, cust_ship, price in products_data:
             p, _ = Product.objects.get_or_create(
-                brand=brand, category=cat, model_name=model, gender=gender,
+                brand=brand, category=cat, model_name=model,
                 defaults={
+                    'sku': sku,
                     'cost_foreign': Decimal(str(cost)),
                     'currency': curr,
                     'customs_cost': Decimal(str(cust_ship * 0.6)),
@@ -118,9 +115,9 @@ class Command(BaseCommand):
                 }
             )
             v, v_created = ProductVariant.objects.get_or_create(
-                sku=sku,
+                product=p, size=size, color=color,
                 defaults={
-                    'product': p, 'size': size, 'color': color
+                    'sku_suffix': f"-{size}-{color}", 'gender': gender
                 }
             )
             if v_created:
@@ -139,8 +136,9 @@ class Command(BaseCommand):
         ]
         customers = []
         for name, phone, ctype, notes in customers_data:
-            c = Customer.objects.create(
-                name=name, phone=phone, customer_type=ctype, notes=notes
+            c, _ = Customer.objects.get_or_create(
+                phone=phone,
+                defaults={'name': name, 'customer_type': ctype, 'notes': notes}
             )
             customers.append(c)
 
@@ -176,22 +174,17 @@ class Command(BaseCommand):
                 customer.save()
 
         # Sample Expenses
-        expense_cats = ['R', 'S', 'U', 'M', 'O']
-        expense_descs = {
-            'R': 'Monthly Shop Rent',
-            'S': 'Employee Salaries',
-            'U': 'Electricity & Water Utilities',
-            'M': 'Social Media Advertising Campaign',
-            'O': 'Miscellaneous Expenses',
-        }
+        expense_names = ['Rent', 'Salaries', 'Utilities', 'Marketing', 'Office Supplies']
+        expense_categories = [ExpenseCategory.objects.get_or_create(name=n)[0] for n in expense_names]
+        
         for i in range(10):
-            cat = random.choice(expense_cats)
+            exp_cat = random.choice(expense_categories)
             Expense.objects.create(
                 expense_date=(now - timedelta(days=random.randint(0, 60))).date(),
-                category=cat,
-                description=expense_descs[cat],
+                expense_category=exp_cat,
+                description=f"{exp_cat.name} Expense #{i+1}",
                 amount=Decimal(str(random.randint(500, 25000))),
                 payment_method=random.choice(payment_methods),
             )
 
-        self.stdout.write(self.style.SUCCESS('✅ Database seeded successfully!'))
+        self.stdout.write(self.style.SUCCESS('[OK] Database seeded successfully!'))
