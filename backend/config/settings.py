@@ -9,7 +9,7 @@ config = AutoConfig(search_path=BASE_DIR)
 
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-erp-local-dev-key-change-in-production')
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
+ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
