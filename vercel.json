@@ -5,6 +5,7 @@
     },
     "backend": {
       "root": "backend",
+      "framework": null,
       "entrypoint": "api/index.py"
     }
   }
