@@ -1,0 +1,210 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import { useLanguage } from '@/lib/i18n'
+import { getExpenses, createExpense, getExpenseCategories, Expense, ExpenseCategory } from '@/lib/api'
+import { Receipt, Plus, DollarSign, Calendar, X } from 'lucide-react'
+
+export default function ExpensesPage() {
+  const { t, language } = useLanguage()
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [categories, setCategories] = useState<ExpenseCategory[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [categoryId, setCategoryId] = useState('')
+  const [amount, setAmount] = useState<number>(0)
+  const [expenseDate, setExpenseDate] = useState<string>(new Date().toISOString().split('T')[0])
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function loadExpenses() {
+    setLoading(true)
+    try {
+      const [e, c] = await Promise.all([getExpenses(), getExpenseCategories()])
+      setExpenses(Array.isArray(e) ? e : (e as any).results || [])
+      setCategories(Array.isArray(c) ? c : (c as any).results || [])
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadExpenses()
+  }, [])
+
+  const handleCreateExpense = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      await createExpense({
+        category: categoryId,
+        amount: Number(amount),
+        expense_date: expenseDate,
+        notes,
+      })
+      setIsModalOpen(false)
+      setAmount(0)
+      setNotes('')
+      loadExpenses()
+    } catch (err: any) {
+      alert(err.message || 'Failed to create expense')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const totalAmount = expenses.reduce((acc, curr) => acc + Number(curr.amount || 0), 0)
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-white flex items-center gap-2">
+            <Receipt className="w-5 h-5 text-amber-400" />
+            <span>{t('expensesTitle')}</span>
+          </h1>
+          <p className="text-xs text-zinc-400 mt-1">
+            {language === 'ar'
+              ? 'تسجيل وحساب مصروفات المحل التشغيلية والإيجارات والفواتير'
+              : 'Track store overhead, rent, utilities and operational expenses'}
+          </p>
+        </div>
+
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl text-xs flex items-center gap-2 transition"
+        >
+          <Plus className="w-4 h-4" />
+          <span>{t('addExpense')}</span>
+        </button>
+      </div>
+
+      <div className="p-5 rounded-2xl bg-[#0c0c10] border border-[#1e1e26] flex items-center justify-between">
+        <div>
+          <span className="text-xs text-zinc-400 font-semibold">{t('totalExpenses')}</span>
+          <div className="text-2xl font-black text-red-400 mt-1">{totalAmount} EGP</div>
+        </div>
+        <span className="text-xs text-zinc-500">
+          {expenses.length} {language === 'ar' ? 'سندات مصروفات' : 'vouchers recorded'}
+        </span>
+      </div>
+
+      <div className="rounded-2xl bg-[#0c0c10] border border-[#1e1e26] overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-start">
+            <thead>
+              <tr className="border-b border-zinc-800 bg-zinc-950/50 text-zinc-400">
+                <th className="p-4 text-start"># ID</th>
+                <th className="p-4 text-start">{t('expenseCategory')}</th>
+                <th className="p-4 text-end">{t('amount')}</th>
+                <th className="p-4 text-start">{t('notes')}</th>
+                <th className="p-4 text-end">{t('date')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800/40">
+              {expenses.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-zinc-500">
+                    {loading ? t('loading') : t('noData')}
+                  </td>
+                </tr>
+              ) : (
+                expenses.map((e) => (
+                  <tr key={e.id} className="hover:bg-zinc-900/30">
+                    <td className="p-4 font-mono font-bold text-amber-400">#{e.id}</td>
+                    <td className="p-4 font-semibold text-white">
+                      {e.category_name || (typeof e.category === 'string' ? e.category : `Category #${e.category}`)}
+                    </td>
+                    <td className="p-4 text-end font-bold text-red-400">{e.amount} EGP</td>
+                    <td className="p-4 text-zinc-400">{e.notes || '—'}</td>
+                    <td className="p-4 text-end text-zinc-500">{new Date(e.expense_date).toLocaleDateString()}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal: Add Expense */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-[#0c0c10] border border-zinc-800 rounded-2xl p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800 mb-4">
+              <h2 className="text-sm font-bold text-white">{t('addExpense')}</h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-zinc-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateExpense} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('expenseCategory')}</label>
+                <input
+                  type="text"
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                  required
+                  placeholder="e.g. Rent, Electricity, Packaging, Staff"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('amount')} (EGP)</label>
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(Number(e.target.value))}
+                  required
+                  min={1}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('date')}</label>
+                <input
+                  type="date"
+                  value={expenseDate}
+                  onChange={(e) => setExpenseDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('notes')}</label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white"
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl text-xs transition"
+                >
+                  {saving ? t('loading') : t('save')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

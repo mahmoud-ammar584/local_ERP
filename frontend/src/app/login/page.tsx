@@ -1,122 +1,134 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { setTokens } from '@/lib/auth'
-import { fetchJson, ApiError } from '@/lib/http'
+import { setSession } from '@/lib/auth'
+import { useLanguage } from '@/lib/i18n'
+import { Sparkles, Lock, User, ArrowRight, AlertCircle } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
-  const [email, setEmail]       = useState('')
+  const { t, language, setLanguage } = useLanguage()
+
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError]       = useState('')
-  const [loading, setLoading]   = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     setLoading(true)
+
     try {
-      const data = await fetchJson<{ access: string; refresh: string; workspace_id?: string }>(
-        '/api/v1/auth/login/',
-        { method: 'POST', body: JSON.stringify({ email, password }), skipAuth: true }
-      )
-      setTokens(data.access, data.refresh)
-      if (data.workspace_id) {
-        localStorage.setItem('sarih_workspace_id', data.workspace_id)
+      const res = await fetch('/api/auth/login/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data.error || data.detail || 'Invalid username or password')
       } else {
-        try {
-          const me = await fetchJson<{ workspace_id?: string }>('/api/v1/auth/me/', { method: 'GET' })
-          if (me.workspace_id) localStorage.setItem('sarih_workspace_id', me.workspace_id)
-        } catch { /* continue */ }
+        setSession(data.token, data.user)
+        router.push('/dashboard')
       }
-      router.push('/dashboard')
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Network error.')
+      setError('Network connection error. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
-      {/* Left amber accent bar */}
-      <div className="fixed left-0 top-0 bottom-0 w-[3px] bg-signal-amber" />
+    <div className="min-h-screen bg-[#050508] flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Subtle Glow Background Elements */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+      
+      {/* Language Switcher */}
+      <button
+        type="button"
+        onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+        className="absolute top-6 right-6 px-3 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 text-xs font-semibold text-zinc-300 transition"
+      >
+        {language === 'ar' ? 'English' : 'العربية'}
+      </button>
 
-      <div className="w-full max-w-[400px]">
-
-        {/* Header */}
-        <div className="mb-10">
-          <div className="text-[7pt] font-bold tracking-[0.18em] text-signal-amber mb-3 uppercase">
-            صريح  ·  SARIH
+      <div className="w-full max-w-md bg-[#0c0c10] border border-[#1e1e26] rounded-2xl p-8 shadow-2xl relative z-10">
+        {/* Brand Icon & Heading */}
+        <div className="text-center mb-8">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-500/20">
+            <Sparkles className="w-6 h-6 text-zinc-950" />
           </div>
-          <h1 className="text-[28pt] font-bold text-text-primary leading-none">
-            Radical Financial Truth.
+          <h1 className="text-2xl font-black tracking-tight text-white">
+            Funnel <span className="text-amber-400 font-semibold">ERP</span>
           </h1>
-          <p className="text-[10pt] text-text-muted mt-2">
-            Access requires credentials. No exceptions.
+          <p className="text-xs text-zinc-400 mt-1 font-medium">
+            {t('brandSubtitle')}
           </p>
         </div>
 
-        {/* Divider */}
-        <div className="h-px bg-void-border mb-8" />
+        {/* Error Alert */}
+        {error && (
+          <div className="mb-6 p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center gap-2.5 text-xs text-red-400 font-medium">
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+            <span>{error}</span>
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="p-3 border border-signal-critical/40 bg-[#1A0000] rounded-sm text-[9pt] text-signal-critical">
-              ✕ {error}
+          <div>
+            <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+              {t('usernameOrEmail')}
+            </label>
+            <div className="relative">
+              <User className="w-4 h-4 text-zinc-500 absolute top-3.5 start-3.5" />
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                className="w-full ps-10 pe-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-400/80 focus:ring-1 focus:ring-amber-400/80 transition"
+                placeholder={language === 'ar' ? 'أدخل اسم المستخدم' : 'Enter your username'}
+              />
             </div>
-          )}
-          <div>
-            <label className="block text-[8pt] font-bold uppercase tracking-[0.1em] text-text-muted mb-2">
-              Email
-            </label>
-            <input
-              id="login-email"
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              className="sarih-input"
-              placeholder="you@company.com"
-              required
-            />
           </div>
+
           <div>
-            <label className="block text-[8pt] font-bold uppercase tracking-[0.1em] text-text-muted mb-2">
-              Password
+            <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+              {t('password')}
             </label>
-            <input
-              id="login-password"
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="sarih-input"
-              required
-            />
+            <div className="relative">
+              <Lock className="w-4 h-4 text-zinc-500 absolute top-3.5 start-3.5" />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full ps-10 pe-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-400/80 focus:ring-1 focus:ring-amber-400/80 transition"
+                placeholder="••••••••••"
+              />
+            </div>
           </div>
+
           <button
-            id="login-submit"
             type="submit"
             disabled={loading}
-            className="sarih-btn-primary w-full mt-2"
+            className="w-full mt-2 py-3 px-4 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 font-bold rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Authenticating...' : 'Sign In  →'}
+            <span>{loading ? t('authenticating') : t('signIn')}</span>
+            <ArrowRight className="w-4 h-4" />
           </button>
         </form>
 
-        {/* Footer link */}
-        <p className="text-center text-[9pt] text-text-muted mt-6">
-          No account?{' '}
-          <a href="/signup" className="text-signal-amber hover:underline">
-            Request access
-          </a>
-        </p>
-
-        {/* Brand law */}
-        <div className="mt-10 pt-6 border-t border-void-border">
-          <p className="text-[8pt] text-text-muted text-center italic">
-            &ldquo;We don&apos;t comfort. We warn.&rdquo;
+        <div className="mt-8 pt-6 border-t border-zinc-800/60 text-center">
+          <p className="text-[11px] text-zinc-500">
+            {language === 'ar'
+              ? 'نظام مؤمن متعدد المستأجرين مع عزل كامل للبيانات وتدقيق أمني شامل'
+              : 'Secure Multi-Tenant Architecture with Tenant-Level Isolation & Audit'}
           </p>
         </div>
       </div>

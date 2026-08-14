@@ -1,42 +1,57 @@
-const ACCESS_KEY  = 'sarih_auth_access_token'
-const REFRESH_KEY = 'sarih_auth_refresh_token'
-const WS_KEY      = 'sarih_workspace_id'
+export interface UserProfile {
+  id: number
+  username: string
+  email: string
+  first_name?: string
+  last_name?: string
+  role: 'admin' | 'cashier' | string
+  company_id: number
+  company_name: string
+  permissions: Record<string, string[]>
+}
 
-export function setTokens(access: string, refresh: string): void {
+const TOKEN_KEY = 'funnel_auth_token'
+const USER_KEY  = 'funnel_user_profile'
+
+export function setSession(token: string, user: UserProfile): void {
   if (typeof window === 'undefined') return
-  localStorage.setItem(ACCESS_KEY, access)
-  localStorage.setItem(REFRESH_KEY, refresh)
-  document.cookie = `${ACCESS_KEY}=${access}; path=/; SameSite=Strict`
+  localStorage.setItem(TOKEN_KEY, token)
+  localStorage.setItem(USER_KEY, JSON.stringify(user))
+  document.cookie = `${TOKEN_KEY}=${token}; path=/; SameSite=Lax`
 }
 
-export function getAccessToken(): string | null {
+export function getToken(): string | null {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem(ACCESS_KEY)
+  return localStorage.getItem(TOKEN_KEY)
 }
 
-export function getRefreshToken(): string | null {
+export function getUser(): UserProfile | null {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem(REFRESH_KEY)
+  const stored = localStorage.getItem(USER_KEY)
+  if (!stored) return null
+  try {
+    return JSON.parse(stored) as UserProfile
+  } catch {
+    return null
+  }
 }
 
-export function clearTokens(): void {
+export function clearSession(): void {
   if (typeof window === 'undefined') return
-  localStorage.removeItem(ACCESS_KEY)
-  localStorage.removeItem(REFRESH_KEY)
-  localStorage.removeItem(WS_KEY)
-  document.cookie = `${ACCESS_KEY}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`
+  localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(USER_KEY)
+  document.cookie = `${TOKEN_KEY}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`
 }
 
 export function isAuthenticated(): boolean {
-  return !!getAccessToken()
+  return !!getToken()
 }
 
-export function getWorkspaceId(): string | null {
-  if (typeof window === 'undefined') return null
-  return localStorage.getItem(WS_KEY)
-}
-
-export function setWorkspaceId(id: string): void {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(WS_KEY, id)
+export function hasPermission(module: string, action: 'view' | 'add' | 'edit' | 'delete'): boolean {
+  const user = getUser()
+  if (!user) return false
+  if (user.role === 'admin') return true
+  const perms = user.permissions || {}
+  const modulePerms = perms[module] || []
+  return modulePerms.includes(action)
 }
