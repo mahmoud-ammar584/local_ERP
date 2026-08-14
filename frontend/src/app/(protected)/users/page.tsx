@@ -45,8 +45,8 @@ export default function UsersPage() {
     try {
       setLoading(true)
       const [uRes, iRes] = await Promise.all([
-        fetch('http://localhost:8000/api/auth/users/', { headers: getHeaders() }),
-        fetch('http://localhost:8000/api/auth/invitations/', { headers: getHeaders() })
+        fetch('/api/auth/users/', { headers: getHeaders() }),
+        fetch('/api/auth/invitations/', { headers: getHeaders() })
       ])
       if (uRes.ok) {
         const uData = await uRes.json()
@@ -74,7 +74,7 @@ export default function UsersPage() {
     setInviting(true)
 
     try {
-      const res = await fetch('http://localhost:8000/api/auth/invitations/', {
+      const res = await fetch('/api/auth/invitations/', {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({ email: inviteEmail, role: inviteRole })

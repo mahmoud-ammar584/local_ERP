@@ -24,7 +24,7 @@ export default function AuditLogsPage() {
     async function fetchAuditLogs() {
       try {
         const token = localStorage.getItem('token') || sessionStorage.getItem('token')
-        const res = await fetch('http://localhost:8000/api/core/audit-logs/', {
+        const res = await fetch('/api/core/audit-logs/', {
           headers: {
             'Authorization': `Token ${token}`,
             'Content-Type': 'application/json'

@@ -31,7 +31,7 @@ function SignupForm() {
 
     async function verifyToken() {
       try {
-        const res = await fetch(`http://localhost:8000/api/auth/invitations/verify/?token=${encodeURIComponent(token!)}`)
+        const res = await fetch(`/api/auth/invitations/verify/?token=${encodeURIComponent(token!)}`)
         const data = await res.json()
         if (!res.ok) {
           setVerifyError(data.error || 'Invalid or expired invitation token.')
@@ -57,7 +57,7 @@ function SignupForm() {
     setLoading(true)
 
     try {
-      const res = await fetch('http://localhost:8000/api/auth/invitations/accept/', {
+      const res = await fetch('/api/auth/invitations/accept/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
