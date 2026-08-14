@@ -144,12 +144,7 @@ REST_FRAMEWORK = {
 
 CACHES = {
     'default': {
-        'BACKEND': (
-            'django.core.cache.backends.locmem.LocMemCache'
-            if DEBUG
-            else 'django.core.cache.backends.db.DatabaseCache'
-        ),
-        'LOCATION': 'my_cache_table',
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
     }
 }
 
