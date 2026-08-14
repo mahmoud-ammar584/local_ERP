@@ -6,6 +6,8 @@ import { useLanguage } from '@/lib/i18n'
 import { clearSession, getUser } from '@/lib/auth'
 import { Globe, LogOut, Store } from 'lucide-react'
 
+import { resolveApiUrl } from '@/lib/http'
+
 export function Header() {
   const router = useRouter()
   const { language, setLanguage, t } = useLanguage()
@@ -13,7 +15,7 @@ export function Header() {
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/logout/', {
+      await fetch(resolveApiUrl('/api/auth/logout/'), {
         method: 'POST',
         headers: {
           'Authorization': `Token ${localStorage.getItem('funnel_auth_token')}`,

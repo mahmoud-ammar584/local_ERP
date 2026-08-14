@@ -6,6 +6,8 @@ import { setSession } from '@/lib/auth'
 import { useLanguage } from '@/lib/i18n'
 import { Sparkles, Lock, User, ArrowRight, AlertCircle } from 'lucide-react'
 
+import { resolveApiUrl } from '@/lib/http'
+
 export default function LoginPage() {
   const router = useRouter()
   const { t, language, setLanguage } = useLanguage()
@@ -21,7 +23,7 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const res = await fetch('/api/auth/login/', {
+      const res = await fetch(resolveApiUrl('/api/auth/login/'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),

@@ -15,12 +15,26 @@ interface FetchOptions extends RequestInit {
   skipAuth?: boolean
 }
 
+export function getApiBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_API_URL || 'https://local-erp-five.vercel.app').replace(/\/$/, '')
+}
+
+export function resolveApiUrl(path: string): string {
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path
+  }
+  const base = getApiBaseUrl()
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  return `${base}${normalizedPath}`
+}
+
 export async function fetchJson<T = unknown>(
   url: string,
   options: FetchOptions = {}
 ): Promise<T> {
   const { skipAuth, headers: extraHeaders, ...rest } = options
   const token = skipAuth ? null : getToken()
+  const targetUrl = resolveApiUrl(url)
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -31,7 +45,7 @@ export async function fetchJson<T = unknown>(
     headers['Authorization'] = `Token ${token}`
   }
 
-  const res = await fetch(url, {
+  const res = await fetch(targetUrl, {
     ...rest,
     headers,
   })
