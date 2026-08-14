@@ -6,7 +6,8 @@
     },
     "backend": {
       "root": "backend",
-      "framework": "other"
+      "framework": "django",
+      "entrypoint": "api/index.py"
     }
   }
 }
