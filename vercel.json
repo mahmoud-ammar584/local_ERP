@@ -1,12 +1,23 @@
 {
-  "services": {
-    "frontend": {
-      "root": "frontend"
+  "version": 2,
+  "builds": [
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/next"
     },
-    "backend": {
-      "root": "backend",
-      "framework": null,
-      "entrypoint": "api/index.py"
+    {
+      "src": "backend/api/index.py",
+      "use": "@vercel/python"
     }
-  }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "backend/api/index.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "frontend/$1"
+    }
+  ]
 }
