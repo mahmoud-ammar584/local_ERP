@@ -104,8 +104,16 @@ export default function AuditPage() {
                         <span>{log.action}</span>
                       </span>
                     </td>
-                    <td className="p-4 font-mono text-zinc-400">{log.model_name || 'System'}</td>
-                    <td className="p-4 text-zinc-300">{log.user_username || 'System'}</td>
+                    <td className="p-4 text-zinc-300">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-white">{log.user_full_name || log.username || log.user_username || 'System'}</span>
+                        {log.user_role && log.user_role !== 'system' && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-amber-400 font-mono">
+                            {log.user_role}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="p-4 font-mono text-zinc-500">{log.ip_address || '—'}</td>
                     <td className="p-4 text-end text-zinc-500">
                       {new Date(log.timestamp).toLocaleString()}

@@ -42,7 +42,10 @@ export interface ProductVariant {
   color: string
   size: string
   sku_suffix: string
+  full_sku?: string
   current_quantity?: number
+  stock_quantity?: number
+  effective_price?: number
 }
 
 export interface Product {
@@ -62,6 +65,7 @@ export interface Product {
   min_alert_quantity: number
   variants: ProductVariant[]
   total_stock?: number
+  current_quantity?: number
   created_at: string
 }
 

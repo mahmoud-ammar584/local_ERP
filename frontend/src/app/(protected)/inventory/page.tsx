@@ -229,9 +229,9 @@ export default function InventoryPage() {
               ) : (
                 products.map((p) => {
                   const totalStock = p.variants?.reduce(
-                    (acc, v) => acc + (v.current_quantity ?? 0),
+                    (acc, v) => acc + (v.stock_quantity ?? v.current_quantity ?? 0),
                     0
-                  ) ?? 0
+                  ) ?? (p.current_quantity ?? 0)
 
                   return (
                     <tr key={p.id} className="hover:bg-zinc-900/30">
@@ -254,12 +254,13 @@ export default function InventoryPage() {
                             <button
                               onClick={() => {
                                 const v = p.variants[0]
+                                const qty = v.stock_quantity ?? v.current_quantity ?? 0
                                 setSelectedVariant({
                                   id: v.id,
-                                  name: `${p.model_name} (${v.color} - ${v.size})`,
-                                  currentQty: v.current_quantity || 0,
+                                  name: `${p.model_name} (${v.color || ''} - ${v.size || ''})`,
+                                  currentQty: qty,
                                 })
-                                setNewQty(v.current_quantity || 0)
+                                setNewQty(qty)
                                 setIsAdjustModalOpen(true)
                               }}
                               className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-[11px] font-semibold transition"

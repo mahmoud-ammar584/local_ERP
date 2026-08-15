@@ -3,15 +3,20 @@ from rest_framework.response import Response
 from rest_framework import status
 from apps.core.translations import get_translation
 
-def log_activity(user, action, model_name=None, object_id=None, details=None):
+def log_activity(user, action, model_name=None, object_id=None, details=None, ip_address=None):
     """Log user activity to the database"""
     try:
+        company = None
+        if user and hasattr(user, 'profile'):
+            company = user.profile.company
         UserActivity.objects.create(
             user=user,
+            company=company,
             action=action,
             model_name=model_name,
             object_id=object_id,
-            details=details
+            details=details or {},
+            ip_address=ip_address
         )
     except Exception as e:
         # We don't want logging failures to crash the primary operation.

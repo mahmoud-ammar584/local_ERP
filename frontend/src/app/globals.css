@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&family=Inter:wght@300;400;600;700&family=Readex+Pro:wght@300;400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Inter:wght@300;400;600;700;900&family=Readex+Pro:wght@300;400;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -22,7 +22,7 @@
 }
 
 html, body {
-  background-color: #050505;
+  background-color: #050508;
   color: #F0F0F0;
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -37,91 +37,51 @@ html, body {
 
 /* ── Scrollbar ─────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #050505;
+  background: #060609;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2A2A2A;
-  border-radius: 3px;
+  background: #23232c;
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #444;
+  background: #f59e0b;
 }
 
-/* ── Sarih Component Classes ───────────────── */
-@layer components {
-
-  /* Card */
-  .sarih-card {
-    @apply bg-void-card border border-void-border rounded-card;
+/* ── Print Media Queries ──────────────────────── */
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
   }
 
-  /* Amber accent left border — the "verdict bar" */
-  .verdict-bar {
-    @apply border-l-2 border-signal-amber pl-4;
+  /* Hide navigation, sidebar, headers, and buttons when printing */
+  header,
+  aside,
+  nav,
+  button,
+  .print\:hidden {
+    display: none !important;
   }
 
-  /* Label tag */
-  .sarih-label {
-    @apply text-[7pt] font-bold uppercase tracking-[0.12em] text-signal-amber;
+  main {
+    padding: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
   }
 
-  /* Verdict text — the main judgment */
-  .sarih-verdict {
-    @apply text-[14pt] font-semibold text-text-primary leading-snug;
-  }
-
-  /* Muted context text */
-  .sarih-context {
-    @apply text-[9pt] font-light text-text-muted leading-relaxed;
-  }
-
-  /* Data value — large number */
-  .sarih-data {
-    @apply text-[28pt] font-light text-text-primary leading-none;
-  }
-
-  /* Status pill */
-  .sarih-pill-amber    { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-[#1A0D00] text-signal-amber text-[7pt] font-bold tracking-wide; }
-  .sarih-pill-stable   { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-[#001A0D] text-signal-stable text-[7pt] font-bold tracking-wide; }
-  .sarih-pill-critical { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-[#1A0000] text-signal-critical text-[7pt] font-bold tracking-wide; }
-
-  /* Divider */
-  .sarih-divider { @apply border-t border-void-border; }
-
-  /* Button — ghost */
-  .sarih-btn {
-    @apply flex items-center gap-2 px-4 py-2 rounded-sm
-           bg-void-zinc border border-void-border
-           text-sm text-text-muted
-           hover:border-[#444] hover:text-text-primary
-           transition-colors duration-150
-           disabled:opacity-40 disabled:cursor-not-allowed;
-  }
-
-  /* Button — amber primary */
-  .sarih-btn-primary {
-    @apply flex items-center justify-center gap-2 px-4 py-2 rounded-sm
-           bg-signal-amber text-[#050505]
-           text-sm font-semibold
-           hover:bg-[#D97706]
-           transition-colors duration-150
-           disabled:opacity-50 disabled:cursor-not-allowed;
-  }
-
-  /* Input */
-  .sarih-input {
-    @apply w-full px-4 py-3
-           bg-void-card2 border border-void-border rounded-sm
-           text-text-primary text-sm
-           placeholder-text-muted
-           focus:outline-none focus:border-[#444]
-           transition-colors;
+  #printable-receipt {
+    display: block !important;
+    width: 80mm !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    color: #000000 !important;
+    background: #ffffff !important;
   }
 }

@@ -12,6 +12,7 @@ class ProductVariantSerializer(serializers.ModelSerializer):
     full_sku = serializers.ReadOnlyField()
     effective_price = serializers.ReadOnlyField()
     stock_quantity = serializers.SerializerMethodField()
+    current_quantity = serializers.SerializerMethodField()
 
     class Meta:
         model = ProductVariant
@@ -19,14 +20,17 @@ class ProductVariantSerializer(serializers.ModelSerializer):
             'id', 'product', 'sku_suffix', 'full_sku',
             'color', 'size', 'gender',
             'price_override', 'effective_price',
-            'stock_quantity', 'is_active', 'created_at'
+            'stock_quantity', 'current_quantity', 'is_active', 'created_at'
         ]
 
     def get_stock_quantity(self, obj):
         try:
             return obj.stock.current_quantity
-        except Stock.DoesNotExist:
+        except Exception:
             return 0
+
+    def get_current_quantity(self, obj):
+        return self.get_stock_quantity(obj)
 
 class ProductListSerializer(serializers.ModelSerializer):
     brand_name = serializers.CharField(source='brand.name', read_only=True)

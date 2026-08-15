@@ -1,5 +1,3 @@
-'use client'
-
 import React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -16,9 +14,15 @@ import {
   ShieldCheck,
   History,
   Sparkles,
+  X,
 } from 'lucide-react'
 
-export function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean
+  onClose?: () => void
+}
+
+export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const { t, language } = useLanguage()
   const user = getUser()
@@ -80,19 +84,31 @@ export function Sidebar() {
     },
   ]
 
-  return (
-    <aside className="w-64 bg-[#0a0a0c] border-r border-[#1e1e26] flex flex-col min-h-screen shrink-0">
+  const sidebarContent = (
+    <div className="w-64 bg-[#0a0a0c] border-r border-[#1e1e26] flex flex-col h-full shrink-0">
       {/* Brand Header */}
-      <div className="p-5 border-b border-[#1e1e26] flex items-center gap-3">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center text-zinc-950 font-black shadow-lg shadow-amber-500/20">
-          <Sparkles className="w-5 h-5 text-zinc-950" />
+      <div className="p-5 border-b border-[#1e1e26] flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center text-zinc-950 font-black shadow-lg shadow-amber-500/20">
+            <Sparkles className="w-5 h-5 text-zinc-950" />
+          </div>
+          <div>
+            <h1 className="font-bold text-base tracking-wide text-white flex items-center gap-1.5">
+              Funnel <span className="text-amber-400 text-xs font-semibold px-1.5 py-0.5 rounded bg-amber-400/10 border border-amber-400/20">ERP</span>
+            </h1>
+            <p className="text-[10px] text-zinc-400 font-medium">{t('brandSubtitle')}</p>
+          </div>
         </div>
-        <div>
-          <h1 className="font-bold text-base tracking-wide text-white flex items-center gap-1.5">
-            Funnel <span className="text-amber-400 text-xs font-semibold px-1.5 py-0.5 rounded bg-amber-400/10 border border-amber-400/20">ERP</span>
-          </h1>
-          <p className="text-[10px] text-zinc-400 font-medium">{t('brandSubtitle')}</p>
-        </div>
+
+        {/* Mobile Close Button */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="lg:hidden p-1.5 text-zinc-400 hover:text-white rounded-lg"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Navigation Links */}
@@ -105,6 +121,9 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => {
+                if (onClose) onClose()
+              }}
               className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
                 isActive
                   ? 'bg-amber-400/10 text-amber-400 border border-amber-400/20 shadow-sm'
@@ -141,6 +160,31 @@ export function Sidebar() {
           </span>
         </div>
       </div>
-    </aside>
+    </div>
+  )
+
+  return (
+    <>
+      {/* Desktop Persistent Sidebar */}
+      <aside className="hidden lg:flex flex-col min-h-screen shrink-0 sticky top-0 h-screen">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile Slide-Over Drawer with Backdrop */}
+      {isOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden flex">
+          {/* Backdrop */}
+          <div
+            onClick={onClose}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity"
+          />
+
+          {/* Drawer Container */}
+          <div className="relative z-50 flex h-full">
+            {sidebarContent}
+          </div>
+        </div>
+      )}
+    </>
   )
 }
