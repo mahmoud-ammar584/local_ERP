@@ -136,16 +136,21 @@ export default function SalesPage() {
     setError('')
     setCompleting(true)
     try {
+      const defaultTaxId = taxRates[0]?.id || 1
       const payload = {
         customer: selectedCustomer ? Number(selectedCustomer) : null,
         payment_method: selectedPaymentMethod ? Number(selectedPaymentMethod) : (paymentMethods[0]?.id || 1),
+        transaction_date: new Date().toISOString(),
+        overall_discount_percentage: 0,
         discount_amount: transactionDiscount,
         paid_amount: finalTotal,
         items: cart.map((item) => ({
+          product: item.productId,
           variant: item.variantId,
           quantity_sold: item.quantity,
           unit_price: item.price,
           item_discount_percentage: item.discount,
+          tax_rate: defaultTaxId,
         })),
       }
 
@@ -155,7 +160,14 @@ export default function SalesPage() {
       setTransactionDiscount(0)
       loadInitialData()
     } catch (err: any) {
-      setError(err.message || 'Checkout failed')
+      let msg = err.message || 'Checkout failed'
+      if (err.details) {
+        if (typeof err.details === 'object' && (err.details as any).items) {
+          const itm = (err.details as any).items
+          msg = Array.isArray(itm) ? (typeof itm[0] === 'object' ? JSON.stringify(itm[0]) : itm[0]) : String(itm)
+        }
+      }
+      setError(msg)
     } finally {
       setCompleting(false)
     }

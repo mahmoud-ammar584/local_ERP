@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { resolveApiUrl } from '@/lib/http'
 
 function SignupForm() {
   const router = useRouter()
@@ -31,7 +32,7 @@ function SignupForm() {
 
     async function verifyToken() {
       try {
-        const res = await fetch(`/api/auth/invitations/verify/?token=${encodeURIComponent(token!)}`)
+        const res = await fetch(resolveApiUrl(`/api/auth/invitations/verify/?token=${encodeURIComponent(token!)}`))
         const data = await res.json()
         if (!res.ok) {
           setVerifyError(data.error || 'Invalid or expired invitation token.')
@@ -57,7 +58,7 @@ function SignupForm() {
     setLoading(true)
 
     try {
-      const res = await fetch('/api/auth/invitations/accept/', {
+      const res = await fetch(resolveApiUrl('/api/auth/invitations/accept/'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

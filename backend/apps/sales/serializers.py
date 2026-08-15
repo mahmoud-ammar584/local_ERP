@@ -1,6 +1,9 @@
 from rest_framework import serializers
+from django.utils import timezone
 from .models import SalesTransaction, SalesItem
 from apps.customers.models import Customer
+from apps.settings_app.models import PaymentMethod, TaxRate
+from apps.inventory.models import Product, ProductVariant
 from apps.core.utils import log_activity
 
 class SalesItemSerializer(serializers.ModelSerializer):
@@ -11,6 +14,7 @@ class SalesItemSerializer(serializers.ModelSerializer):
     item_tax = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
     item_total_after_tax = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
     profit_per_item = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+    tax_rate = serializers.PrimaryKeyRelatedField(queryset=TaxRate.objects.all(), required=False, allow_null=True)
 
     class Meta:
         model = SalesItem
@@ -36,6 +40,7 @@ class SalesItemSerializer(serializers.ModelSerializer):
         p = self._get_product(obj)
         return getattr(p, 'image_url', None) if p else None
 
+
 class SalesTransactionSerializer(serializers.ModelSerializer):
     items = SalesItemSerializer(many=True, read_only=True)
     customer_name = serializers.CharField(source='customer.name', read_only=True, default=None)
@@ -46,7 +51,10 @@ class SalesTransactionSerializer(serializers.ModelSerializer):
         model = SalesTransaction
         fields = '__all__'
 
+
 class SalesTransactionCreateSerializer(serializers.ModelSerializer):
+    transaction_date = serializers.DateTimeField(required=False, default=timezone.now)
+    payment_method = serializers.PrimaryKeyRelatedField(queryset=PaymentMethod.objects.all(), required=False, allow_null=True)
     items = SalesItemSerializer(many=True)
 
     class Meta:
@@ -57,24 +65,38 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
         from django.db import transaction
         from apps.inventory.models import Stock
 
+        if not data.get('transaction_date'):
+            data['transaction_date'] = timezone.now()
+
+        if not data.get('payment_method'):
+            pm = PaymentMethod.objects.first()
+            if pm:
+                data['payment_method'] = pm
+
         items_data = data.get('items', [])
+        default_tax = TaxRate.objects.first()
         
         with transaction.atomic():
             for item in items_data:
-                product = item.get('product')
                 variant = item.get('variant')
-                qty_sold = item['quantity_sold']
-                
+                product = item.get('product')
+                qty_sold = item.get('quantity_sold', 1)
+
+                if not item.get('tax_rate') and default_tax:
+                    item['tax_rate'] = default_tax
+
                 target_variant = variant
                 if not target_variant and product:
                     target_variant = product.variants.filter(is_active=True).order_by('id').first()
+                    item['variant'] = target_variant
+
+                if target_variant and not product:
+                    item['product'] = target_variant.product
 
                 if target_variant:
-                    # Use select_for_update to prevent race conditions during validation
                     stock = Stock.objects.select_for_update().filter(variant=target_variant).first()
                     current_qty = stock.current_quantity if stock else 0
                     
-                    # Enforce oversold check: current_quantity >= quantity_sold UNLESS product.can_be_oversold is True
                     can_oversell = target_variant.product.can_be_oversold if target_variant else (product.can_be_oversold if product else False)
                     
                     if not can_oversell and current_qty < qty_sold:
@@ -85,9 +107,18 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         items_data = validated_data.pop('items')
+        
+        # Ensure company is attached
+        request = self.context.get('request')
+        if request and hasattr(request.user, 'profile') and request.user.profile.company:
+            validated_data['company'] = request.user.profile.company
+
         transaction = SalesTransaction.objects.create(**validated_data)
 
+        default_tax = TaxRate.objects.first()
         for item_data in items_data:
+            if not item_data.get('tax_rate') and default_tax:
+                item_data['tax_rate'] = default_tax
             SalesItem.objects.create(sales_transaction=transaction, **item_data)
 
         transaction.recalculate()
@@ -100,8 +131,6 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
             customer.last_purchase_date = transaction.transaction_date.date()
             customer.save()
 
-        # --- LOG ACTIVITY (Phase 10) ---
-        request = self.context.get('request')
         if request and request.user:
             log_activity(
                 request.user, 
