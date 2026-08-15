@@ -1,14 +1,26 @@
 from datetime import timedelta
 from django.utils import timezone
-from django.db.models import Sum, Count, F, DecimalField
+from django.db.models import Sum, Count, F, DecimalField, Q, ExpressionWrapper
 from django.db.models.functions import TruncDate
 from django.core.cache import cache
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework import status
 from apps.sales.models import SalesTransaction, SalesItem
 from apps.expenses.models import Expense
 from apps.inventory.models import Product, Stock
 from apps.customers.models import Customer
+
+def _has_dashboard_perm(request):
+    if not (request.user and request.user.is_authenticated):
+        return False
+    profile = getattr(request.user, 'profile', None)
+    if not profile or not profile.company_id:
+        return False
+    if profile.role in ['owner', 'admin']:
+        return True
+    return profile.has_permission('dashboard', 'view')
 
 def _parse_date_range(request):
     period = request.query_params.get('period', 'month')
@@ -28,7 +40,11 @@ def _parse_date_range(request):
     return start, now
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def summary(request):
+    if not _has_dashboard_perm(request):
+        return Response({'error': 'Permission denied for dashboard analytics'}, status=status.HTTP_403_FORBIDDEN)
+
     start, end = _parse_date_range(request)
     period = request.query_params.get('period', 'month')
     cache_key = f"dashboard_summary_{period}_{start}_{end}"
@@ -36,8 +52,6 @@ def summary(request):
     cached_data = cache.get(cache_key)
     if cached_data:
         return Response(cached_data)
-
-    from django.db.models import Q, Sum, F, ExpressionWrapper
     
     # Efficient aggregation for Sales and Profits
     sales_stats = SalesItem.objects.filter(
@@ -56,7 +70,6 @@ def summary(request):
         total_profit=Sum('item_profit')
     )
 
-    # Use the final_amount from SalesTransaction for total sales (includes transaction-level discounts if any)
     total_sales = SalesTransaction.objects.filter(
         transaction_date__range=[start, end]
     ).aggregate(total=Sum('final_amount'))['total'] or 0
@@ -66,7 +79,6 @@ def summary(request):
     expenses = Expense.objects.filter(expense_date__range=[start, end])
     total_expenses = expenses.aggregate(total=Sum('amount'))['total'] or 0
 
-    # Optimized Inventory stats
     inventory_stats = Stock.objects.annotate(
         item_value=ExpressionWrapper(
             F('current_quantity') * (
@@ -91,11 +103,15 @@ def summary(request):
         'total_transactions': SalesTransaction.objects.filter(transaction_date__range=[start, end]).count(),
     }
     
-    cache.set(cache_key, result, 300) # 5 minutes cache
+    cache.set(cache_key, result, 300)
     return Response(result)
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def sales_over_time(request):
+    if not _has_dashboard_perm(request):
+        return Response({'error': 'Permission denied for dashboard analytics'}, status=status.HTTP_403_FORBIDDEN)
+
     start, end = _parse_date_range(request)
     data = (
         SalesTransaction.objects
@@ -108,7 +124,11 @@ def sales_over_time(request):
     return Response(list(data))
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def expenses_by_category(request):
+    if not _has_dashboard_perm(request):
+        return Response({'error': 'Permission denied for dashboard analytics'}, status=status.HTTP_403_FORBIDDEN)
+
     start, end = _parse_date_range(request)
     data = (
         Expense.objects
@@ -122,7 +142,11 @@ def expenses_by_category(request):
     return Response(result)
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def top_products(request):
+    if not _has_dashboard_perm(request):
+        return Response({'error': 'Permission denied for dashboard analytics'}, status=status.HTTP_403_FORBIDDEN)
+
     start, end = _parse_date_range(request)
     data = (
         SalesItem.objects
@@ -137,7 +161,11 @@ def top_products(request):
     return Response(list(data))
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def top_customers(request):
+    if not _has_dashboard_perm(request):
+        return Response({'error': 'Permission denied for dashboard analytics'}, status=status.HTTP_403_FORBIDDEN)
+
     data = (
         Customer.objects
         .filter(total_purchases__gt=0)

@@ -4,7 +4,7 @@ export interface UserProfile {
   email: string
   first_name?: string
   last_name?: string
-  role: 'admin' | 'cashier' | string
+  role: 'owner' | 'admin' | 'cashier' | 'custom' | string
   company_id: number
   company_name: string
   permissions: Record<string, string[]>
@@ -50,8 +50,22 @@ export function isAuthenticated(): boolean {
 export function hasPermission(module: string, action: 'view' | 'add' | 'edit' | 'delete'): boolean {
   const user = getUser()
   if (!user) return false
-  if (user.role === 'admin') return true
+  if (user.role === 'owner' || user.role === 'admin') return true
   const perms = user.permissions || {}
   const modulePerms = perms[module] || []
   return modulePerms.includes(action)
+}
+
+export function getDefaultRoute(): string {
+  const user = getUser()
+  if (!user) return '/login'
+  if (user.role === 'owner' || user.role === 'admin' || hasPermission('dashboard', 'view')) {
+    return '/dashboard'
+  }
+  if (hasPermission('sales', 'view')) return '/sales'
+  if (hasPermission('inventory', 'view')) return '/inventory'
+  if (hasPermission('customers', 'view')) return '/customers'
+  if (hasPermission('purchases', 'view')) return '/purchases'
+  if (hasPermission('expenses', 'view')) return '/expenses'
+  return '/sales'
 }

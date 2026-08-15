@@ -104,15 +104,23 @@ class UserViewSet(AuditLogMixin, viewsets.ModelViewSet):
 
     def partial_update(self, request, *args, **kwargs):
         user = self.get_object()
+        actor_profile = request.user.profile
+        target_profile = user.profile
+
+        if target_profile.role == 'owner' and actor_profile.role != 'owner':
+            return Response({'error': 'Cannot modify the Owner account.'}, status=status.HTTP_403_FORBIDDEN)
+
         role = request.data.get('role')
         permissions_data = request.data.get('permissions')
 
-        profile = user.profile
         if role:
-            profile.role = role
+            if role == 'owner' and actor_profile.role != 'owner':
+                return Response({'error': 'Only an Owner can assign the Owner role.'}, status=status.HTTP_403_FORBIDDEN)
+            target_profile.role = role
+
         if permissions_data is not None and isinstance(permissions_data, dict):
-            profile.permissions = permissions_data
-        profile.save()
+            target_profile.permissions = permissions_data
+        target_profile.save()
 
         if 'first_name' in request.data:
             user.first_name = request.data['first_name']

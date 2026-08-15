@@ -3,19 +3,19 @@ from rest_framework import permissions
 
 class AdminOnly(permissions.BasePermission):
     """
-    Allow access only to users with 'admin' role within their company.
+    Allow access to users with 'owner' or 'admin' role within their company.
     """
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
         profile = getattr(request.user, 'profile', None)
-        return bool(profile and profile.company_id and profile.role == 'admin')
+        return bool(profile and profile.company_id and profile.role in ['owner', 'admin'])
 
 
 class HasModulePermission(permissions.BasePermission):
     """
     Granular per-module & per-action permission class.
-    Modules: 'sales', 'purchases', 'inventory', 'customers', 'expenses', 'settings', 'users', 'audit'
+    Modules: 'dashboard', 'sales', 'purchases', 'inventory', 'customers', 'expenses', 'settings', 'users', 'audit'
     Actions: 'view', 'add', 'edit', 'delete'
     """
     METHOD_ACTION_MAP = {
@@ -28,6 +28,16 @@ class HasModulePermission(permissions.BasePermission):
         'DELETE': 'delete',
     }
 
+    LOOKUP_VIEW_NAMES = {
+        'BrandViewSet',
+        'CategoryViewSet',
+        'SupplierViewSet',
+        'CustomerTypeViewSet',
+        'PaymentMethodViewSet',
+        'CurrencyViewSet',
+        'TaxRateViewSet',
+    }
+
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
@@ -36,14 +46,18 @@ class HasModulePermission(permissions.BasePermission):
         if not profile or not profile.company_id:
             return False
 
-        # Company admins have full access across all modules/actions by default
-        if profile.role == 'admin':
+        # Company owner and admins have full access across all modules/actions
+        if profile.role in ['owner', 'admin']:
+            return True
+
+        # Common master / lookup tables: allow read-only (GET) to all authenticated company members
+        view_name = view.__class__.__name__
+        if view_name in self.LOOKUP_VIEW_NAMES and request.method in ['GET', 'HEAD', 'OPTIONS']:
             return True
 
         # Determine target module
         module = getattr(view, 'module_name', None)
         if not module:
-            # Fallback to app_label of the queryset model if defined
             queryset = getattr(view, 'queryset', None)
             if queryset is not None:
                 module = queryset.model._meta.app_label
@@ -66,7 +80,7 @@ class HasModulePermission(permissions.BasePermission):
         return profile.has_permission(module, action_name)
 
 
-# Backward compatibility aliases for existing code paths
+# Backward compatibility aliases
 CashierSalesPermission = HasModulePermission
 CashierInventoryPermission = HasModulePermission
 CashierPurchasesPermission = HasModulePermission

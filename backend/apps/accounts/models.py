@@ -19,6 +19,7 @@ class Company(models.Model):
 
 class Profile(models.Model):
     ROLE_CHOICES = [
+        ('owner', 'Owner'),
         ('admin', 'Admin'),
         ('cashier', 'Cashier'),
         ('custom', 'Custom'),
@@ -32,7 +33,7 @@ class Profile(models.Model):
 
     def has_permission(self, module, action):
         """Check if profile has specific action permission for a module"""
-        if self.role == 'admin':
+        if self.role in ['owner', 'admin']:
             return True
         if not self.permissions or not isinstance(self.permissions, dict):
             return False

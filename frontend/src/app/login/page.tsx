@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { setSession } from '@/lib/auth'
+import { setSession, getDefaultRoute } from '@/lib/auth'
 import { useLanguage } from '@/lib/i18n'
 import { Sparkles, Lock, User, ArrowRight, AlertCircle } from 'lucide-react'
 
@@ -35,7 +35,8 @@ export default function LoginPage() {
         setError(data.error || data.detail || 'Invalid username or password')
       } else {
         setSession(data.token, data.user)
-        router.push('/dashboard')
+        const destination = getDefaultRoute()
+        router.push(destination)
       }
     } catch (err) {
       setError('Network connection error. Please try again.')

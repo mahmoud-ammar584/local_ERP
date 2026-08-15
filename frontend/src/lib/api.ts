@@ -288,6 +288,12 @@ export const createInvitation = (email: string, role: string, permissions: Recor
     body: JSON.stringify({ email, role, permissions }),
   })
 
+export const updateUser = (id: number, data: Record<string, unknown>) =>
+  fetchJson(`/api/auth/users/${id}/`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+
 export const deleteInvitation = (id: number) =>
   fetchJson(`/api/auth/invitations/${id}/`, { method: 'DELETE' })
 

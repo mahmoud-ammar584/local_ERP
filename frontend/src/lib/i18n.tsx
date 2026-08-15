@@ -30,7 +30,9 @@ const translations = {
     signIn: 'دخول النظام',
     authenticating: 'جاري التحقق...',
     adminRole: 'مدير النظام',
+    ownerRole: 'مالك المتجر (Owner)',
     cashierRole: 'كاشير / موظف',
+    editPermissions: 'تعديل الصلاحيات',
     activeTenant: 'المتجر / الشركة النشطة',
 
     // Dashboard
@@ -167,7 +169,9 @@ const translations = {
     signIn: 'Sign In',
     authenticating: 'Authenticating...',
     adminRole: 'Administrator',
+    ownerRole: 'Store Owner',
     cashierRole: 'Cashier / Staff',
+    editPermissions: 'Edit Permissions',
     activeTenant: 'Active Store / Company',
 
     // Dashboard
