@@ -12,6 +12,10 @@ from apps.expenses.models import Expense
 from apps.inventory.models import Product, Stock
 from apps.customers.models import Customer
 
+def _get_user_company(request):
+    profile = getattr(request.user, 'profile', None)
+    return getattr(profile, 'company', None)
+
 def _has_dashboard_perm(request):
     if not (request.user and request.user.is_authenticated):
         return False
@@ -45,18 +49,35 @@ def summary(request):
     if not _has_dashboard_perm(request):
         return Response({'error': 'Permission denied for dashboard analytics'}, status=status.HTTP_403_FORBIDDEN)
 
+    company = _get_user_company(request)
     start, end = _parse_date_range(request)
     period = request.query_params.get('period', 'month')
-    cache_key = f"dashboard_summary_{period}_{start}_{end}"
+    company_id = company.id if company else 'all'
+    cache_key = f"dashboard_summary_{company_id}_{period}"
     
     cached_data = cache.get(cache_key)
     if cached_data:
         return Response(cached_data)
     
     # Efficient aggregation for Sales and Profits
-    sales_stats = SalesItem.objects.filter(
+    sales_items_qs = SalesItem.objects.filter(
         sales_transaction__transaction_date__range=[start, end]
-    ).annotate(
+    )
+    sales_tx_qs = SalesTransaction.objects.filter(
+        transaction_date__range=[start, end]
+    )
+    expenses_qs = Expense.objects.filter(
+        expense_date__range=[start, end]
+    )
+    stock_qs = Stock.objects.all()
+
+    if company:
+        sales_items_qs = sales_items_qs.filter(sales_transaction__company=company)
+        sales_tx_qs = sales_tx_qs.filter(company=company)
+        expenses_qs = expenses_qs.filter(company=company)
+        stock_qs = stock_qs.filter(variant__product__company=company)
+
+    sales_stats = sales_items_qs.annotate(
         item_revenue=ExpressionWrapper(
             F('unit_price') * F('quantity_sold') * (1 - F('item_discount_percentage') / 100.0),
             output_field=DecimalField()
@@ -70,16 +91,11 @@ def summary(request):
         total_profit=Sum('item_profit')
     )
 
-    total_sales = SalesTransaction.objects.filter(
-        transaction_date__range=[start, end]
-    ).aggregate(total=Sum('final_amount'))['total'] or 0
-    
+    total_sales = sales_tx_qs.aggregate(total=Sum('final_amount'))['total'] or 0
     total_profit = sales_stats['total_profit'] or 0
+    total_expenses = expenses_qs.aggregate(total=Sum('amount'))['total'] or 0
 
-    expenses = Expense.objects.filter(expense_date__range=[start, end])
-    total_expenses = expenses.aggregate(total=Sum('amount'))['total'] or 0
-
-    inventory_stats = Stock.objects.annotate(
+    inventory_stats = stock_qs.annotate(
         item_value=ExpressionWrapper(
             F('current_quantity') * (
                 F('variant__product__cost_foreign') * F('variant__product__currency__exchange_rate_to_base') + 
@@ -94,16 +110,16 @@ def summary(request):
     )
 
     result = {
-        'total_sales': total_sales,
-        'total_profit': total_profit,
-        'total_expenses': total_expenses,
+        'total_sales': float(total_sales),
+        'total_profit': float(total_profit),
+        'total_expenses': float(total_expenses),
         'net_income': float(total_sales) - float(total_expenses),
-        'low_stock_count': inventory_stats['low_stock_count'],
-        'total_inventory_value': inventory_stats['total_value'] or 0,
-        'total_transactions': SalesTransaction.objects.filter(transaction_date__range=[start, end]).count(),
+        'low_stock_count': inventory_stats['low_stock_count'] or 0,
+        'total_inventory_value': float(inventory_stats['total_value'] or 0),
+        'total_transactions': sales_tx_qs.count(),
     }
     
-    cache.set(cache_key, result, 300)
+    cache.set(cache_key, result, 60)
     return Response(result)
 
 @api_view(['GET'])
@@ -112,10 +128,15 @@ def sales_over_time(request):
     if not _has_dashboard_perm(request):
         return Response({'error': 'Permission denied for dashboard analytics'}, status=status.HTTP_403_FORBIDDEN)
 
+    company = _get_user_company(request)
     start, end = _parse_date_range(request)
+    
+    qs = SalesTransaction.objects.filter(transaction_date__range=[start, end])
+    if company:
+        qs = qs.filter(company=company)
+
     data = (
-        SalesTransaction.objects
-        .filter(transaction_date__range=[start, end])
+        qs
         .annotate(date=TruncDate('transaction_date'))
         .values('date')
         .annotate(total=Sum('final_amount'), count=Count('id'))
@@ -129,16 +150,20 @@ def expenses_by_category(request):
     if not _has_dashboard_perm(request):
         return Response({'error': 'Permission denied for dashboard analytics'}, status=status.HTTP_403_FORBIDDEN)
 
+    company = _get_user_company(request)
     start, end = _parse_date_range(request)
+    
+    qs = Expense.objects.filter(expense_date__range=[start, end])
+    if company:
+        qs = qs.filter(company=company)
+
     data = (
-        Expense.objects
-        .filter(expense_date__range=[start, end])
-        .values('category')
+        qs
+        .values(category=F('expense_category__name'))
         .annotate(total=Sum('amount'))
         .order_by('-total')
     )
-    category_map = dict(Expense.CATEGORY_CHOICES)
-    result = [{'category': category_map.get(d['category'], d['category']), 'total': d['total']} for d in data]
+    result = [{'category': d['category'] or 'Uncategorized', 'total': float(d['total'] or 0)} for d in data]
     return Response(result)
 
 @api_view(['GET'])
@@ -147,10 +172,15 @@ def top_products(request):
     if not _has_dashboard_perm(request):
         return Response({'error': 'Permission denied for dashboard analytics'}, status=status.HTTP_403_FORBIDDEN)
 
+    company = _get_user_company(request)
     start, end = _parse_date_range(request)
+    
+    qs = SalesItem.objects.filter(sales_transaction__transaction_date__range=[start, end])
+    if company:
+        qs = qs.filter(sales_transaction__company=company)
+
     data = (
-        SalesItem.objects
-        .filter(sales_transaction__transaction_date__range=[start, end])
+        qs
         .values('variant__product__model_name', 'variant__product__brand__name')
         .annotate(
             total_qty=Sum('quantity_sold'),
@@ -166,9 +196,13 @@ def top_customers(request):
     if not _has_dashboard_perm(request):
         return Response({'error': 'Permission denied for dashboard analytics'}, status=status.HTTP_403_FORBIDDEN)
 
+    company = _get_user_company(request)
+    qs = Customer.objects.filter(total_purchases__gt=0)
+    if company:
+        qs = qs.filter(company=company)
+
     data = (
-        Customer.objects
-        .filter(total_purchases__gt=0)
+        qs
         .values('id', 'name', 'total_purchases', 'total_profit')
         .order_by('-total_purchases')[:10]
     )

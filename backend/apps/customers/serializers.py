@@ -13,8 +13,16 @@ class CustomerSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         if not validated_data.get('customer_type'):
-            ct = CustomerType.objects.first()
+            request = self.context.get('request')
+            profile = getattr(getattr(request, 'user', None), 'profile', None)
+            company = getattr(profile, 'company', None)
+            
+            ct = None
+            if company:
+                ct = CustomerType.objects.filter(company=company).first()
             if not ct:
-                ct = CustomerType.objects.create(name='VIP Client')
+                ct = CustomerType.objects.first()
+            if not ct:
+                ct = CustomerType.objects.create(name='VIP Client', company=company)
             validated_data['customer_type'] = ct
         return super().create(validated_data)

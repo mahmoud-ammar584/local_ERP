@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .models import SalesTransaction
 from .serializers import SalesTransactionSerializer, SalesTransactionCreateSerializer
+from .utils import generate_invoice_pdf
 from apps.core.mixins import TenantScopedViewSetMixin, AuditLogMixin
 from apps.accounts.permissions import HasModulePermission
 

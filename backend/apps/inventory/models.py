@@ -24,6 +24,11 @@ class Product(models.Model):
         help_text="Base SKU for the product. Variants append sku_suffix to build full SKU."
     )
 
+    barcode = models.CharField(
+        max_length=100, blank=True, null=True, db_index=True,
+        help_text="Optional manufacturer barcode or standard EAN/UPC"
+    )
+
     # Named 'model_name' instead of 'product_name' following fashion industry conventions.
     # e.g.: "GG Marmont Bag" or "Monolith Boots"
     model_name = models.CharField(max_length=200, db_column='model')
@@ -112,6 +117,10 @@ class ProductVariant(models.Model):
         default='',
         help_text="Appended to product SKU. e.g. '-BLK-M' → full SKU: 'GG-001-BLK-M'"
     )
+    barcode = models.CharField(
+        max_length=100, blank=True, null=True, db_index=True,
+        help_text="Optional variant barcode if different from base SKU"
+    )
     color = models.CharField(max_length=100)
     size = models.CharField(max_length=50)
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, default='U')
@@ -154,8 +163,90 @@ class Stock(models.Model):
     current_quantity = models.IntegerField(default=0)
     last_updated = models.DateTimeField(auto_now=True)
 
-    # TODO: Add 'reserved_quantity' field
-    # For quantities allocated to orders not yet shipped.
-
     def __str__(self):
         return f'{self.variant.full_sku}: {self.current_quantity}'
+
+
+class StockAudit(models.Model):
+    """
+    Periodic or Spot Inventory Audit / Count Session.
+    Compares physical counts scanned via barcode against system expected quantities.
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    company = models.ForeignKey('accounts.Company', on_delete=models.CASCADE, related_name='stock_audits', null=True, blank=True)
+    title = models.CharField(max_length=255, default="Stocktake Audit Session")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_progress')
+    created_by = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_audits')
+    notes = models.TextField(blank=True, null=True)
+
+    total_expected_items = models.IntegerField(default=0)
+    total_counted_items = models.IntegerField(default=0)
+    total_variance_items = models.IntegerField(default=0)
+    total_variance_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    def recalculate_totals(self):
+        items = self.items.all()
+        self.total_expected_items = sum(i.expected_quantity for i in items)
+        self.total_counted_items = sum(i.counted_quantity for i in items)
+        self.total_variance_items = self.total_counted_items - self.total_expected_items
+        self.total_variance_cost = sum(i.discrepancy_value for i in items)
+        self.save(update_fields=[
+            'total_expected_items', 'total_counted_items',
+            'total_variance_items', 'total_variance_cost'
+        ])
+
+    def __str__(self):
+        return f"Audit #{self.id} - {self.title} ({self.status})"
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class StockAuditItem(models.Model):
+    """
+    Individual line item in an inventory audit session.
+    Tracks expected vs scanned physical count and unit landed cost.
+    """
+    audit = models.ForeignKey(StockAudit, on_delete=models.CASCADE, related_name='items')
+    variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name='audit_items')
+    expected_quantity = models.IntegerField(default=0)
+    counted_quantity = models.IntegerField(default=0)
+    unit_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    notes = models.CharField(max_length=255, blank=True, null=True)
+    last_scanned_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def discrepancy(self):
+        return self.counted_quantity - self.expected_quantity
+
+    @property
+    def discrepancy_value(self):
+        from decimal import Decimal
+        return Decimal(str(self.discrepancy)) * self.unit_cost
+
+    @property
+    def discrepancy_type(self):
+        diff = self.discrepancy
+        if diff == 0:
+            return 'matched'
+        elif diff > 0:
+            return 'surplus'
+        else:
+            return 'deficit'
+
+    def __str__(self):
+        return f"{self.audit.title} - {self.variant.full_sku}: {self.counted_quantity}/{self.expected_quantity}"
+
+    class Meta:
+        unique_together = [('audit', 'variant')]
+        ordering = ['variant__product__brand', 'variant__product__model_name']

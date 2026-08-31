@@ -66,9 +66,38 @@ class HasModulePermission(permissions.BasePermission):
 
         # Determine target action
         action = getattr(view, 'action', None)
-        if action in ['list', 'retrieve', 'export_csv', 'invoice', 'lookup']:
+        view_name = view.__class__.__name__
+
+        # Granular Stocktake checks
+        if view_name == 'StockAuditViewSet':
+            if action == 'reconcile':
+                return profile.has_permission('inventory', 'stocktake_reconcile')
+            elif action in ['scan', 'set_item_count']:
+                return profile.has_permission('inventory', 'stocktake_count')
+            elif action == 'create':
+                return profile.has_permission('inventory', 'stocktake_create')
+            elif action in ['list', 'retrieve', 'export_csv']:
+                return profile.has_permission('inventory', 'stocktake_view')
+
+        # Product lookup (Used by POS cashier and Stocktake)
+        if action == 'lookup':
+            if profile.has_permission('sales', 'add') or profile.has_permission('inventory', 'view') or profile.has_permission('inventory', 'stocktake_count'):
+                return True
+
+        # Manual Stock Adjustment
+        if action == 'adjust_stock':
+            return profile.has_permission('inventory', 'adjust_stock')
+
+        # Purchase Order Receiving
+        if action == 'receive':
+            return profile.has_permission('purchases', 'receive')
+
+        # Generic Action Mapping
+        if action in ['list', 'retrieve', 'invoice']:
             action_name = 'view'
-        elif action in ['create', 'adjust_stock', 'receive']:
+        elif action in ['export_csv']:
+            action_name = 'export_csv' if profile.has_permission(module, 'export_csv') else 'view'
+        elif action in ['create']:
             action_name = 'add'
         elif action in ['update', 'partial_update']:
             action_name = 'edit'
@@ -84,3 +113,4 @@ class HasModulePermission(permissions.BasePermission):
 CashierSalesPermission = HasModulePermission
 CashierInventoryPermission = HasModulePermission
 CashierPurchasesPermission = HasModulePermission
+

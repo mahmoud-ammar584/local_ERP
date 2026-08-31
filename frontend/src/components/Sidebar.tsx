@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   History,
   Sparkles,
+  ClipboardCheck,
   X,
 } from 'lucide-react'
 
@@ -38,13 +39,27 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       label: t('navSales'),
       href: '/sales',
       icon: ShoppingCart,
-      show: user?.role === 'owner' || user?.role === 'admin' || hasPermission('sales', 'view'),
+      show:
+        user?.role === 'owner' ||
+        user?.role === 'admin' ||
+        hasPermission('sales', 'view') ||
+        hasPermission('sales', 'add'),
     },
     {
       label: t('navInventory'),
       href: '/inventory',
       icon: Shirt,
       show: user?.role === 'owner' || user?.role === 'admin' || hasPermission('inventory', 'view'),
+    },
+    {
+      label: t('navStocktake'),
+      href: '/inventory/stocktake',
+      icon: ClipboardCheck,
+      show:
+        user?.role === 'owner' ||
+        user?.role === 'admin' ||
+        hasPermission('inventory', 'stocktake_view') ||
+        hasPermission('inventory', 'stocktake_count'),
     },
     {
       label: t('navPurchases'),

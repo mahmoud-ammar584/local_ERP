@@ -3,10 +3,15 @@
 import React, { useState, useEffect } from 'react'
 import { useLanguage } from '@/lib/i18n'
 import { getExpenses, createExpense, getExpenseCategories, Expense, ExpenseCategory } from '@/lib/api'
-import { Receipt, Plus, DollarSign, Calendar, X } from 'lucide-react'
+import { hasPermission } from '@/lib/auth'
+import { Receipt, Plus, DollarSign, Calendar, X, Lock } from 'lucide-react'
 
 export default function ExpensesPage() {
   const { t, language } = useLanguage()
+
+  const canView = hasPermission('expenses', 'view')
+  const canAdd = hasPermission('expenses', 'add')
+
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,11 +37,19 @@ export default function ExpensesPage() {
   }
 
   useEffect(() => {
-    loadExpenses()
-  }, [])
+    if (canView) {
+      loadExpenses()
+    } else {
+      setLoading(false)
+    }
+  }, [canView])
 
   const handleCreateExpense = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!canAdd) {
+      alert('ليس لديك صلاحية لتسجيل مصروف جديد')
+      return
+    }
     setSaving(true)
     try {
       await createExpense({
@@ -56,6 +69,24 @@ export default function ExpensesPage() {
     }
   }
 
+  if (!canView) {
+    return (
+      <div className="p-8 rounded-2xl bg-[#0c0c10] border border-red-500/30 text-center space-y-3">
+        <div className="w-12 h-12 rounded-xl bg-red-500/10 text-red-400 flex items-center justify-center mx-auto">
+          <Lock className="w-6 h-6" />
+        </div>
+        <h2 className="text-base font-bold text-white">
+          {language === 'ar' ? 'غير مصرح بالوصول إلى المصروفات' : 'Access Restricted to Expenses'}
+        </h2>
+        <p className="text-xs text-zinc-400 max-w-md mx-auto">
+          {language === 'ar'
+            ? 'يتطلب حسابك الحصول على صلاحية عرض المصروفات من قبل الإدارة.'
+            : 'Your account does not have permission to view expenses.'}
+        </p>
+      </div>
+    )
+  }
+
   const totalAmount = expenses.reduce((acc, curr) => acc + Number(curr.amount || 0), 0)
 
   return (
@@ -68,28 +99,31 @@ export default function ExpensesPage() {
           </h1>
           <p className="text-xs text-zinc-400 mt-1">
             {language === 'ar'
-              ? 'تسجيل وحساب مصروفات المحل التشغيلية والإيجارات والفواتير'
-              : 'Track store overhead, rent, utilities and operational expenses'}
+              ? 'تسجيل ومتابعة نفقات التشغيل والإيجار والدعاية والرواتب'
+              : 'Operational expense tracking, utilities, rent and payroll management'}
           </p>
         </div>
 
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl text-xs flex items-center gap-2 transition"
-        >
-          <Plus className="w-4 h-4" />
-          <span>{t('addExpense')}</span>
-        </button>
+        {canAdd && (
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl text-xs flex items-center gap-2 transition"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{t('addExpense')}</span>
+          </button>
+        )}
       </div>
 
-      <div className="p-5 rounded-2xl bg-[#0c0c10] border border-[#1e1e26] flex items-center justify-between">
-        <div>
-          <span className="text-xs text-zinc-400 font-semibold">{t('totalExpenses')}</span>
-          <div className="text-2xl font-black text-red-400 mt-1">{totalAmount} EGP</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="p-5 rounded-2xl bg-[#0c0c10] border border-[#1e1e26] space-y-1">
+          <span className="text-xs text-zinc-400 font-medium">{t('totalExpenses')}</span>
+          <div className="text-2xl font-bold text-white font-mono">{totalAmount.toLocaleString()} EGP</div>
         </div>
-        <span className="text-xs text-zinc-500">
-          {expenses.length} {language === 'ar' ? 'سندات مصروفات' : 'vouchers recorded'}
-        </span>
+        <div className="p-5 rounded-2xl bg-[#0c0c10] border border-[#1e1e26] space-y-1">
+          <span className="text-xs text-zinc-400 font-medium">{t('expensesCount')}</span>
+          <div className="text-2xl font-bold text-amber-400 font-mono">{expenses.length}</div>
+        </div>
       </div>
 
       <div className="rounded-2xl bg-[#0c0c10] border border-[#1e1e26] overflow-hidden">
@@ -98,9 +132,9 @@ export default function ExpensesPage() {
             <thead>
               <tr className="border-b border-zinc-800 bg-zinc-950/50 text-zinc-400">
                 <th className="p-4 text-start"># ID</th>
-                <th className="p-4 text-start">{t('expenseCategory')}</th>
-                <th className="p-4 text-end">{t('amount')}</th>
+                <th className="p-4 text-start">{t('category')}</th>
                 <th className="p-4 text-start">{t('notes')}</th>
+                <th className="p-4 text-end">{t('amount')}</th>
                 <th className="p-4 text-end">{t('date')}</th>
               </tr>
             </thead>
@@ -115,12 +149,10 @@ export default function ExpensesPage() {
                 expenses.map((e) => (
                   <tr key={e.id} className="hover:bg-zinc-900/30">
                     <td className="p-4 font-mono font-bold text-amber-400">#{e.id}</td>
-                    <td className="p-4 font-semibold text-white">
-                      {e.category_name || (typeof e.category === 'string' ? e.category : `Category #${e.category}`)}
-                    </td>
-                    <td className="p-4 text-end font-bold text-red-400">{e.amount} EGP</td>
+                    <td className="p-4 font-semibold text-white">{e.category_name}</td>
                     <td className="p-4 text-zinc-400">{e.notes || '—'}</td>
-                    <td className="p-4 text-end text-zinc-500">{new Date(e.expense_date).toLocaleDateString()}</td>
+                    <td className="p-4 text-end font-bold text-red-400 font-mono">{Number(e.amount).toLocaleString()} EGP</td>
+                    <td className="p-4 text-end text-zinc-500 font-mono">{new Date(e.expense_date).toLocaleDateString()}</td>
                   </tr>
                 ))
               )}
@@ -129,12 +161,15 @@ export default function ExpensesPage() {
         </div>
       </div>
 
-      {/* Modal: Add Expense */}
-      {isModalOpen && (
+      {/* Modal: New Expense */}
+      {isModalOpen && canAdd && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-[#0c0c10] border border-zinc-800 rounded-2xl p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800 mb-4">
-              <h2 className="text-sm font-bold text-white">{t('addExpense')}</h2>
+          <div className="w-full max-w-md bg-[#0c0c10] border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                <Plus className="w-4 h-4 text-amber-400" />
+                <span>{t('addExpense')}</span>
+              </h2>
               <button onClick={() => setIsModalOpen(false)} className="text-zinc-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
@@ -142,25 +177,30 @@ export default function ExpensesPage() {
 
             <form onSubmit={handleCreateExpense} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('expenseCategory')}</label>
-                <input
-                  type="text"
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('category')}</label>
+                <select
+                  required
                   value={categoryId}
                   onChange={(e) => setCategoryId(e.target.value)}
-                  required
-                  placeholder="e.g. Rent, Electricity, Packaging, Staff"
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
-                />
+                >
+                  <option value="">Select Category</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('amount')} (EGP)</label>
                 <input
                   type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(Number(e.target.value))}
                   required
                   min={1}
+                  value={amount}
+                  onChange={(e) => setAmount(Number(e.target.value))}
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
                 />
               </div>
@@ -169,6 +209,7 @@ export default function ExpensesPage() {
                 <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('date')}</label>
                 <input
                   type="date"
+                  required
                   value={expenseDate}
                   onChange={(e) => setExpenseDate(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
@@ -177,10 +218,11 @@ export default function ExpensesPage() {
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('notes')}</label>
-                <textarea
+                <input
+                  type="text"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
+                  placeholder="e.g. Monthly Boutique Rent"
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
                 />
               </div>

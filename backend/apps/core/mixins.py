@@ -58,6 +58,11 @@ class TenantScopedViewSetMixin:
             kwargs['company'] = company
 
         instance = serializer.save(**kwargs)
+        if hasattr(self, '_log_audit_event'):
+            self._log_audit_event(
+                action=f"Created {instance._meta.verbose_name.title()} #{getattr(instance, 'pk', '')}",
+                instance=instance
+            )
         return instance
 
 

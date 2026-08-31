@@ -55,14 +55,14 @@ class TaxRateViewSet(BaseSettingsViewSet):
     serializer_class = TaxRateSerializer
 
 
-@api_view(['GET', 'PUT'])
+@api_view(['GET', 'PUT', 'POST', 'PATCH'])
 @permission_classes([IsAuthenticated, HasModulePermission])
 def store_info_view(request):
-    company = getattr(request.user.profile, 'company', None)
+    company = getattr(getattr(request.user, 'profile', None), 'company', None)
     store = StoreInfo.load(company=company)
     if request.method == 'GET':
         return Response(StoreInfoSerializer(store).data)
-    serializer = StoreInfoSerializer(store, data=request.data)
+    serializer = StoreInfoSerializer(store, data=request.data, partial=True)
     serializer.is_valid(raise_exception=True)
     serializer.save(company=company)
     return Response(serializer.data)

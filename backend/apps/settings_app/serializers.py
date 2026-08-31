@@ -37,6 +37,29 @@ class TaxRateSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class StoreInfoSerializer(serializers.ModelSerializer):
+    store_name = serializers.CharField(source='name', required=False)
+    legal_name = serializers.CharField(source='commercial_registration', required=False, allow_blank=True, allow_null=True)
+
     class Meta:
         model = StoreInfo
-        fields = '__all__'
+        fields = [
+            'id', 'company', 'name', 'store_name', 'address', 'phone', 'email',
+            'commercial_registration', 'legal_name', 'tax_registration_number'
+        ]
+        read_only_fields = ['id', 'company']
+
+    def update(self, instance, validated_data):
+        if 'name' in validated_data:
+            instance.name = validated_data['name']
+        if 'address' in validated_data:
+            instance.address = validated_data['address']
+        if 'phone' in validated_data:
+            instance.phone = validated_data['phone']
+        if 'email' in validated_data:
+            instance.email = validated_data['email']
+        if 'commercial_registration' in validated_data:
+            instance.commercial_registration = validated_data['commercial_registration']
+        if 'tax_registration_number' in validated_data:
+            instance.tax_registration_number = validated_data['tax_registration_number']
+        instance.save()
+        return instance

@@ -44,6 +44,7 @@ class SalesItem(models.Model):
     tax_rate = models.ForeignKey(TaxRate, on_delete=models.PROTECT)
 
     def save(self, *args, **kwargs):
+        is_new = self._state.adding
         # Backward compatibility: if a product is provided but no variant is set,
         # attach the first active variant (common for single-variant products).
         if self.product_id and not self.variant_id:
@@ -54,7 +55,7 @@ class SalesItem(models.Model):
                 .first()
             )
         super().save(*args, **kwargs)
-        if self._state.adding and self.variant_id:
+        if is_new and self.variant_id:
             from apps.inventory.tasks import update_stock
             update_stock(self.variant_id, -self.quantity_sold)
 

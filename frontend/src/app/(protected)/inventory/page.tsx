@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useLanguage } from '@/lib/i18n'
 import {
   getProducts,
@@ -16,6 +17,9 @@ import {
   Supplier,
   Currency,
 } from '@/lib/api'
+import { hasPermission } from '@/lib/auth'
+import { BarcodeDisplay } from '@/components/BarcodeDisplay'
+import { BarcodeLabelModal, LabelProductData } from '@/components/BarcodeLabelModal'
 import {
   Shirt,
   Plus,
@@ -27,6 +31,12 @@ import {
   Package,
   Layers,
   X,
+  Tag,
+  ClipboardCheck,
+  Sparkles,
+  Barcode,
+  ArrowUpRight,
+  Lock,
 } from 'lucide-react'
 
 export default function InventoryPage() {
@@ -34,6 +44,12 @@ export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+
+  // Granular Permissions
+  const canAdd = hasPermission('inventory', 'add')
+  const canAdjust = hasPermission('inventory', 'adjust_stock')
+  const canPrintBarcode = hasPermission('inventory', 'print_barcode')
+  const canViewStocktake = hasPermission('inventory', 'stocktake_view') || hasPermission('inventory', 'stocktake_count')
 
   // Metadata for creating products
   const [brands, setBrands] = useState<Brand[]>([])
@@ -48,9 +64,14 @@ export default function InventoryPage() {
   const [newQty, setNewQty] = useState<number>(0)
   const [adjustReason, setAdjustReason] = useState('Manual Stock Count')
 
+  // Barcode Label Modal State
+  const [labelProduct, setLabelProduct] = useState<LabelProductData | null>(null)
+  const [isLabelModalOpen, setIsLabelModalOpen] = useState(false)
+
   // New Product Form State
   const [form, setForm] = useState({
-    sku: '',
+    sku: 'FNL-GG-01',
+    barcode: '',
     model_name: '',
     brand: '',
     category: '',
@@ -61,8 +82,8 @@ export default function InventoryPage() {
     suggested_selling_price: 0,
     min_alert_quantity: 2,
     variants: [
-      { color: 'Black', size: 'M', sku_suffix: '-BLK-M' },
-      { color: 'Black', size: 'L', sku_suffix: '-BLK-L' },
+      { color: 'Black', size: 'M', sku_suffix: '-BLK-M', barcode: '' },
+      { color: 'Black', size: 'L', sku_suffix: '-BLK-L', barcode: '' },
     ],
   })
   const [saving, setSaving] = useState(false)
@@ -108,20 +129,48 @@ export default function InventoryPage() {
     loadInventory()
   }
 
+  // Auto Generate SKU helper
+  const handleGenerateSku = () => {
+    const selectedBrand = brands.find((b) => String(b.id) === String(form.brand))
+    const brandPrefix = selectedBrand
+      ? selectedBrand.name.substring(0, 3).toUpperCase()
+      : 'FNL'
+    const randomNum = Math.floor(100000 + Math.random() * 900000)
+    const generatedSku = `${brandPrefix}-${randomNum}`
+    setForm((f) => ({
+      ...f,
+      sku: generatedSku,
+      barcode: f.barcode || String(randomNum) + String(Math.floor(1000 + Math.random() * 9000)),
+    }))
+  }
+
   const handleAddVariantRow = () => {
     setForm((f) => ({
       ...f,
-      variants: [...f.variants, { color: 'White', size: 'M', sku_suffix: `-WHT-M-${f.variants.length + 1}` }],
+      variants: [
+        ...f.variants,
+        {
+          color: 'White',
+          size: 'M',
+          sku_suffix: `-WHT-M-${f.variants.length + 1}`,
+          barcode: '',
+        },
+      ],
     }))
   }
 
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!canAdd) {
+      alert('ليس لديك صلاحية لإضافة منتجات جديدة')
+      return
+    }
     setFormError('')
     setSaving(true)
     try {
       await createProduct({
         sku: form.sku,
+        barcode: form.barcode || undefined,
         model_name: form.model_name,
         brand: Number(form.brand) || undefined,
         category: Number(form.category) || undefined,
@@ -145,6 +194,10 @@ export default function InventoryPage() {
   const handleAdjustStock = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedVariant) return
+    if (!canAdjust) {
+      alert('ليس لديك صلاحية لتعديل الأرصدة المخزنية يدوياً')
+      return
+    }
     setSaving(true)
     try {
       await adjustProductStock(selectedVariant.id, newQty, adjustReason)
@@ -155,6 +208,25 @@ export default function InventoryPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handlePrintLabel = (product: Product, variantIndex = 0) => {
+    if (!canPrintBarcode) {
+      alert('ليس لديك صلاحية لطباعة ملصقات الباركود')
+      return
+    }
+    const v = product.variants?.[variantIndex]
+    setLabelProduct({
+      model_name: product.model_name,
+      brand_name: product.brand_name,
+      color: v?.color,
+      size: v?.size,
+      sku: v?.full_sku || v?.sku_suffix || product.sku,
+      barcode: v?.barcode || product.barcode,
+      price: v?.effective_price || product.suggested_selling_price,
+      current_quantity: v?.stock_quantity ?? product.current_quantity,
+    })
+    setIsLabelModalOpen(true)
   }
 
   return (
@@ -168,19 +240,63 @@ export default function InventoryPage() {
           </h1>
           <p className="text-xs text-zinc-400 mt-1">
             {language === 'ar'
-              ? 'إدارة الموديلات والمقاسات والألوان ومتابعة الأرصدة المخزنية'
-              : 'Manage fashion collections, sizes, colors and track inventory levels'}
+              ? 'إدارة الموديلات والمقاسات والألوان ومولد الباركود ومتابعة الأرصدة'
+              : 'Manage fashion collections, sizes, colors, barcode tags and inventory levels'}
           </p>
         </div>
 
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition"
-        >
-          <Plus className="w-4 h-4" />
-          <span>{t('addProduct')}</span>
-        </button>
+        <div className="flex items-center gap-2.5">
+          {canViewStocktake && (
+            <Link
+              href="/inventory/stocktake"
+              className="px-3.5 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-amber-500/30 text-amber-400 font-bold rounded-xl text-xs flex items-center gap-1.5 transition shadow-sm"
+            >
+              <ClipboardCheck className="w-4 h-4" />
+              <span>{t('navStocktake')}</span>
+            </Link>
+          )}
+
+          {canAdd && (
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{t('addProduct')}</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Stocktake Feature Announcement Banner */}
+      {canViewStocktake && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-zinc-900 to-zinc-950 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center">
+              <ClipboardCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-white flex items-center gap-2">
+                <span>{language === 'ar' ? 'موديول الجرد المخزني الآلي بالماسح الضوئي' : 'Physical Barcode Stocktake Module'}</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 font-bold">New</span>
+              </h3>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                {language === 'ar'
+                  ? 'امسح القطع بالسكانر وقارن فورياً مع رصيد النظام الفعلي واكشف العجز والزيادة وأثر التكلفة.'
+                  : 'Scan physical items with scanner gun, detect deficit/surplus, and reconcile stock with 1-click.'}
+              </p>
+            </div>
+          </div>
+
+          <Link
+            href="/inventory/stocktake"
+            className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition shrink-0 self-start sm:self-auto shadow-md"
+          >
+            <span>{language === 'ar' ? 'بدء الجرد الآن' : 'Open Stocktake Hub'}</span>
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
 
       {/* Search & Filter Bar */}
       <div className="p-4 rounded-2xl bg-[#0c0c10] border border-[#1e1e26] flex flex-col sm:flex-row items-center gap-3">
@@ -190,7 +306,7 @@ export default function InventoryPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={language === 'ar' ? 'بحث بكود SKU أو اسم الموديل...' : 'Search by SKU or Model Name...'}
+            placeholder={language === 'ar' ? 'بحث بكود SKU أو الباركود أو اسم الموديل...' : 'Search by SKU, Barcode, or Model Name...'}
             className="w-full ps-9 pe-4 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500"
           />
         </form>
@@ -234,8 +350,17 @@ export default function InventoryPage() {
                   ) ?? (p.current_quantity ?? 0)
 
                   return (
-                    <tr key={p.id} className="hover:bg-zinc-900/30">
-                      <td className="p-4 font-mono font-bold text-amber-400">{p.sku}</td>
+                    <tr key={p.id} className="hover:bg-zinc-900/30 transition">
+                      <td className="p-4 font-mono font-bold text-amber-400">
+                        <div className="flex items-center gap-1.5">
+                          <span>{p.sku}</span>
+                          {p.barcode && (
+                            <span className="text-[10px] text-zinc-500 font-normal">
+                              ({p.barcode})
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="p-4 font-semibold text-white">{p.model_name}</td>
                       <td className="p-4 text-zinc-400">{p.brand_name || '—'}</td>
                       <td className="p-4 text-zinc-400">{p.category_name || '—'}</td>
@@ -250,7 +375,18 @@ export default function InventoryPage() {
                       </td>
                       <td className="p-4 text-end">
                         <div className="flex items-center justify-end gap-1.5">
-                          {p.variants && p.variants.length > 0 && (
+                          {canPrintBarcode && (
+                            <button
+                              onClick={() => handlePrintLabel(p, 0)}
+                              title={t('printBarcode')}
+                              className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-zinc-800 hover:border-amber-400/40 rounded-lg text-[11px] font-semibold transition inline-flex items-center gap-1"
+                            >
+                              <Tag className="w-3 h-3" />
+                              <span>{t('printBarcode')}</span>
+                            </button>
+                          )}
+
+                          {canAdjust && p.variants && p.variants.length > 0 && (
                             <button
                               onClick={() => {
                                 const v = p.variants[0]
@@ -279,8 +415,8 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* Modal: Add Product */}
-      {isAddModalOpen && (
+      {/* Modal: Add Product with Live Barcode Generator */}
+      {isAddModalOpen && canAdd && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="w-full max-w-2xl bg-[#0c0c10] border border-zinc-800 rounded-2xl p-6 shadow-2xl my-8">
             <div className="flex items-center justify-between pb-4 border-b border-zinc-800 mb-6">
@@ -303,6 +439,37 @@ export default function InventoryPage() {
             )}
 
             <form onSubmit={handleCreateProduct} className="space-y-4">
+              {/* Barcode Generator Preview Card */}
+              <div className="p-4 bg-zinc-950 border border-zinc-800/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                    {language === 'ar' ? 'معاينة الباركود المتولد تلقائياً' : 'Live Barcode Generator'}
+                  </span>
+                  <p className="text-xs text-white font-mono mt-0.5">
+                    {form.sku || 'SAMPLE-SKU'}
+                  </p>
+                </div>
+
+                <div className="bg-white p-2 rounded-lg flex items-center justify-center">
+                  <BarcodeDisplay
+                    value={form.sku || 'SAMPLE-SKU'}
+                    width={1.2}
+                    height={32}
+                    showText={false}
+                    barColor="#000000"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGenerateSku}
+                  className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-bold rounded-lg transition flex items-center gap-1.5 self-start sm:self-auto"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{t('generateSku')}</span>
+                </button>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('sku')}</label>
@@ -312,20 +479,31 @@ export default function InventoryPage() {
                     onChange={(e) => setForm({ ...form, sku: e.target.value })}
                     required
                     placeholder="e.g. FNL-DRS-01"
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-400"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('modelName')}</label>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('barcode')} (Optional EAN/UPC)</label>
                   <input
                     type="text"
-                    value={form.model_name}
-                    onChange={(e) => setForm({ ...form, model_name: e.target.value })}
-                    required
-                    placeholder="e.g. Silk Evening Gown"
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                    value={form.barcode}
+                    onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+                    placeholder="e.g. 622104928102"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-400"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('modelName')}</label>
+                <input
+                  type="text"
+                  value={form.model_name}
+                  onChange={(e) => setForm({ ...form, model_name: e.target.value })}
+                  required
+                  placeholder="e.g. Silk Evening Gown"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
               </div>
 
               <div className="grid grid-cols-3 gap-4">
@@ -372,7 +550,7 @@ export default function InventoryPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('cost')} (USD/EUR)</label>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('cost')} (Foreign)</label>
                   <input
                     type="number"
                     value={form.cost_foreign}
@@ -471,7 +649,7 @@ export default function InventoryPage() {
       )}
 
       {/* Modal: Adjust Stock */}
-      {isAdjustModalOpen && selectedVariant && (
+      {isAdjustModalOpen && selectedVariant && canAdjust && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-[#0c0c10] border border-zinc-800 rounded-2xl p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-4 border-b border-zinc-800 mb-4">
@@ -528,6 +706,15 @@ export default function InventoryPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Barcode Label Modal */}
+      {canPrintBarcode && (
+        <BarcodeLabelModal
+          isOpen={isLabelModalOpen}
+          onClose={() => setIsLabelModalOpen(false)}
+          product={labelProduct}
+        />
       )}
     </div>
   )

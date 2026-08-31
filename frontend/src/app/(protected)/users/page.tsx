@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useLanguage } from '@/lib/i18n'
 import { getUsers, getInvitations, createInvitation, deleteInvitation, updateUser } from '@/lib/api'
-import { getUser } from '@/lib/auth'
+import { getUser, hasPermission } from '@/lib/auth'
 import {
   ShieldCheck,
   Plus,
@@ -18,19 +18,181 @@ import {
   Square,
   Shield,
   User,
+  Sparkles,
+  Lock,
+  Sliders,
+  CheckCircle2,
+  Tag,
+  ClipboardCheck,
 } from 'lucide-react'
 
-const AVAILABLE_MODULES = [
-  { id: 'dashboard', labelAr: 'لوحة التحكم (Dashboard)', labelEn: 'Dashboard Analytics', actions: ['view'] },
-  { id: 'sales', labelAr: 'المبيعات ونقاط البيع (POS)', labelEn: 'Sales & POS', actions: ['view', 'add', 'edit', 'delete'] },
-  { id: 'inventory', labelAr: 'المخزون والمنتجات', labelEn: 'Inventory & Stock', actions: ['view', 'add', 'edit', 'delete'] },
-  { id: 'purchases', labelAr: 'المشتريات والموردين', labelEn: 'Purchases & Inward', actions: ['view', 'add', 'edit', 'delete'] },
-  { id: 'customers', labelAr: 'العملاء والديون', labelEn: 'Customers & Balances', actions: ['view', 'add', 'edit', 'delete'] },
-  { id: 'expenses', labelAr: 'المصروفات التشغيلية', labelEn: 'Expenses', actions: ['view', 'add', 'edit', 'delete'] },
-  { id: 'settings', labelAr: 'الإعدادات والبيانات الأساسية', labelEn: 'Settings & Master Data', actions: ['view', 'add', 'edit', 'delete'] },
-  { id: 'users', labelAr: 'إدارة فريق العمل والصلاحيات', labelEn: 'Team & RBAC', actions: ['view', 'add', 'edit', 'delete'] },
-  { id: 'audit', labelAr: 'سجل العمليات والأمان', labelEn: 'Security Audit', actions: ['view'] },
+interface ActionDef {
+  key: string
+  labelAr: string
+  labelEn: string
+  isDangerous?: boolean
+}
+
+interface ModuleDef {
+  id: string
+  labelAr: string
+  labelEn: string
+  actions: ActionDef[]
+}
+
+const AVAILABLE_MODULES: ModuleDef[] = [
+  {
+    id: 'dashboard',
+    labelAr: 'لوحة التحكم والمؤشرات',
+    labelEn: 'Dashboard Analytics',
+    actions: [
+      { key: 'view', labelAr: 'استعراض الإحصائيات العامة والمبيعات اليومية', labelEn: 'View Key Metrics & Reports' },
+    ],
+  },
+  {
+    id: 'sales',
+    labelAr: 'المبيعات ونقاط البيع (POS)',
+    labelEn: 'Sales & POS',
+    actions: [
+      { key: 'view', labelAr: 'استعراض سجل الفواتير والمبيعات السابقة', labelEn: 'View Transactions History' },
+      { key: 'add', labelAr: 'إتمام البيع والدفع السريع بالماسح الضوئي', labelEn: 'POS Fast Barcode Checkout' },
+      { key: 'apply_discount', labelAr: 'صلاحية منح وتطبيق خصومات إضافية', labelEn: 'Apply Custom Discounts' },
+      { key: 'export_csv', labelAr: 'تصدير تقارير المبيعات إلى Excel / CSV', labelEn: 'Export Sales to CSV' },
+    ],
+  },
+  {
+    id: 'inventory',
+    labelAr: 'المخزون والمنتجات والباركود',
+    labelEn: 'Inventory, Products & Barcodes',
+    actions: [
+      { key: 'view', labelAr: 'استعراض كتالوج المنتجات والمقاسات والأرصدة', labelEn: 'View Product Catalog & Stock' },
+      { key: 'add', labelAr: 'إضافة موديلات ومقاسات وألوان جديدة', labelEn: 'Add New Products & Variants' },
+      { key: 'edit', labelAr: 'تعديل أسعار البيع والتكلفة وبيانات الموديلات', labelEn: 'Edit Products & Prices' },
+      { key: 'delete', labelAr: 'حذف الأصناف والموديلات من النظام', labelEn: 'Delete Products', isDangerous: true },
+      { key: 'adjust_stock', labelAr: 'تعديل الأرصدة المخزنية يدوياً', labelEn: 'Manual Stock Balance Adjustment' },
+      { key: 'print_barcode', labelAr: 'توليد وطباعة ملصقات الباركود والأسعار', labelEn: 'Generate & Print Barcode Labels' },
+      { key: 'stocktake_view', labelAr: 'استعراض جلسات الجرد وكشف الفروقات', labelEn: 'View Stocktake Sessions' },
+      { key: 'stocktake_count', labelAr: 'إجراء المسح الضوئي وتسجيل القطع بالجرد', labelEn: 'Perform Scanner Stocktake Counting' },
+      { key: 'stocktake_reconcile', labelAr: 'اعتماد وتسوية الجرد الفعلي على قاعدة البيانات', labelEn: 'Reconcile & Apply Stocktake to Stock', isDangerous: true },
+    ],
+  },
+  {
+    id: 'purchases',
+    labelAr: 'المشتريات والموردين',
+    labelEn: 'Purchases & Inward',
+    actions: [
+      { key: 'view', labelAr: 'استعراض أوامر الشراء والموردين', labelEn: 'View Purchase Orders' },
+      { key: 'add', labelAr: 'إنشاء أمر شراء وتوريد جديد', labelEn: 'Create Purchase Order' },
+      { key: 'edit', labelAr: 'تعديل بيانات وتكاليف أمر الشراء', labelEn: 'Edit Purchase Order' },
+      { key: 'receive', labelAr: 'استلام بضائع المورد في المخزن', labelEn: 'Receive Goods Inward' },
+    ],
+  },
+  {
+    id: 'customers',
+    labelAr: 'العملاء والديون',
+    labelEn: 'Customers & Balances',
+    actions: [
+      { key: 'view', labelAr: 'استعراض سجل العملاء وحسابات الديون', labelEn: 'View Customer Accounts' },
+      { key: 'add', labelAr: 'تسجيل عميل جديد', labelEn: 'Add Customer' },
+      { key: 'edit', labelAr: 'تعديل بيانات وحدود ائتمان العميل', labelEn: 'Edit Customer Details' },
+      { key: 'delete', labelAr: 'حذف العميل', labelEn: 'Delete Customer', isDangerous: true },
+    ],
+  },
+  {
+    id: 'expenses',
+    labelAr: 'المصروفات التشغيلية',
+    labelEn: 'Expenses',
+    actions: [
+      { key: 'view', labelAr: 'استعراض المصروفات والبنود', labelEn: 'View Expenses' },
+      { key: 'add', labelAr: 'تسجيل مصروف جديد', labelEn: 'Record New Expense' },
+      { key: 'delete', labelAr: 'حذف المصروف', labelEn: 'Delete Expense', isDangerous: true },
+    ],
+  },
+  {
+    id: 'settings',
+    labelAr: 'الإعدادات والبيانات الأساسية',
+    labelEn: 'Settings & Master Data',
+    actions: [
+      { key: 'view', labelAr: 'عرض بيانات المتجر والعملات والماركات', labelEn: 'View Settings' },
+      { key: 'edit', labelAr: 'تعديل إعدادات المتجر والضرائب وأسعار الصرف', labelEn: 'Edit Store Settings & Rates', isDangerous: true },
+    ],
+  },
+  {
+    id: 'users',
+    labelAr: 'إدارة فريق العمل والصلاحيات',
+    labelEn: 'Team & RBAC',
+    actions: [
+      { key: 'view', labelAr: 'استعراض أعضاء الفريق والدعوات', labelEn: 'View Team Members' },
+      { key: 'add', labelAr: 'دعوة موظفين جدد وتحديد صلاحياتهم', labelEn: 'Invite Staff & Set Perms' },
+      { key: 'edit', labelAr: 'تعديل صلاحيات ومناصب الموظفين', labelEn: 'Modify Staff Permissions', isDangerous: true },
+      { key: 'delete', labelAr: 'إلغاء الدعوات وحذف الموظفين', labelEn: 'Revoke Invites & Remove Staff', isDangerous: true },
+    ],
+  },
+  {
+    id: 'audit',
+    labelAr: 'سجل العمليات والأمان',
+    labelEn: 'Security Audit',
+    actions: [
+      { key: 'view', labelAr: 'استعراض سجل تحركات الموظفين وتفاصيل التدقيق', labelEn: 'View Audit Logs' },
+    ],
+  },
 ]
+
+// Preset Role Templates
+const ROLE_PRESETS: Record<string, { labelAr: string; labelEn: string; perms: Record<string, string[]> }> = {
+  cashier: {
+    labelAr: 'كاشير نقاط البيع (Cashier)',
+    labelEn: 'POS Cashier',
+    perms: {
+      sales: ['view', 'add'],
+      inventory: ['view', 'print_barcode'],
+      customers: ['view', 'add'],
+    },
+  },
+  inventory_officer: {
+    labelAr: 'أمين مخزن وجرد (Inventory Clerk)',
+    labelEn: 'Inventory Clerk',
+    perms: {
+      inventory: ['view', 'add', 'edit', 'adjust_stock', 'print_barcode', 'stocktake_view', 'stocktake_count'],
+      purchases: ['view', 'receive'],
+    },
+  },
+  auditor: {
+    labelAr: 'مراقب جرد وتدقيق (Stock Auditor)',
+    labelEn: 'Stock Auditor',
+    perms: {
+      inventory: ['view', 'stocktake_view', 'stocktake_count', 'stocktake_reconcile'],
+      audit: ['view'],
+    },
+  },
+  accountant: {
+    labelAr: 'محاسب مالي (Accountant)',
+    labelEn: 'Financial Accountant',
+    perms: {
+      dashboard: ['view'],
+      sales: ['view', 'export_csv'],
+      purchases: ['view'],
+      customers: ['view', 'add', 'edit'],
+      expenses: ['view', 'add', 'delete'],
+      audit: ['view'],
+    },
+  },
+  manager: {
+    labelAr: 'مدير فرع (Branch Manager)',
+    labelEn: 'Branch Manager',
+    perms: {
+      dashboard: ['view'],
+      sales: ['view', 'add', 'apply_discount', 'export_csv'],
+      inventory: ['view', 'add', 'edit', 'adjust_stock', 'print_barcode', 'stocktake_view', 'stocktake_count', 'stocktake_reconcile'],
+      purchases: ['view', 'add', 'edit', 'receive'],
+      customers: ['view', 'add', 'edit'],
+      expenses: ['view', 'add'],
+      settings: ['view'],
+      users: ['view', 'add'],
+      audit: ['view'],
+    },
+  },
+}
 
 export default function UsersPage() {
   const { t, language } = useLanguage()
@@ -40,15 +202,19 @@ export default function UsersPage() {
   const [invitations, setInvitations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Permissions to manage users
+  const canAddUser = hasPermission('users', 'add')
+  const canEditUser = hasPermission('users', 'edit')
+  const canDeleteUser = hasPermission('users', 'delete')
+
   // Invite Modal State
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('cashier')
   const [invitePermissions, setInvitePermissions] = useState<Record<string, string[]>>({
     sales: ['view', 'add'],
-    inventory: ['view'],
+    inventory: ['view', 'print_barcode'],
     customers: ['view', 'add'],
-    expenses: [],
   })
   const [generatedLink, setGeneratedLink] = useState('')
   const [copied, setCopied] = useState(false)
@@ -78,6 +244,17 @@ export default function UsersPage() {
     loadData()
   }, [])
 
+  // Apply Role Preset Helper
+  const applyPreset = (
+    presetKey: string,
+    setPerms: React.Dispatch<React.SetStateAction<Record<string, string[]>>>
+  ) => {
+    const preset = ROLE_PRESETS[presetKey]
+    if (preset) {
+      setPerms(JSON.parse(JSON.stringify(preset.perms)))
+    }
+  }
+
   // --- Handlers for Invite ---
   const handleSendInvite = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -101,6 +278,7 @@ export default function UsersPage() {
   }
 
   const handleDeleteInvite = async (id: number) => {
+    if (!confirm(language === 'ar' ? 'هل أنت متأكد من إلغاء هذه الدعوة؟' : 'Are you sure you want to revoke this invitation?')) return
     try {
       await deleteInvitation(id)
       loadData()
@@ -152,11 +330,113 @@ export default function UsersPage() {
     perms: Record<string, string[]>,
     setPerms: React.Dispatch<React.SetStateAction<Record<string, string[]>>>,
     module: string,
-    allActions: string[]
+    allActions: ActionDef[]
   ) => {
     const current = perms[module] || []
-    const hasAll = allActions.every((a) => current.includes(a))
-    setPerms({ ...perms, [module]: hasAll ? [] : [...allActions] })
+    const allActionKeys = allActions.map((a) => a.key)
+    const isAllSelected = allActionKeys.every((a) => current.includes(a))
+    setPerms({
+      ...perms,
+      [module]: isAllSelected ? [] : allActionKeys,
+    })
+  }
+
+  // Render permission matrix inside modal
+  const renderPermissionsMatrix = (
+    perms: Record<string, string[]>,
+    setPerms: React.Dispatch<React.SetStateAction<Record<string, string[]>>>
+  ) => {
+    return (
+      <div className="space-y-4">
+        {/* Preset Templates Bar */}
+        <div>
+          <span className="text-[11px] font-bold text-zinc-400 block mb-1.5 flex items-center gap-1">
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>{language === 'ar' ? 'نماذج جاهزة سريعة (Role Presets):' : 'Quick Role Templates:'}</span>
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(ROLE_PRESETS).map(([k, p]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => applyPreset(k, setPerms)}
+                className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-amber-500/40 rounded-lg text-[11px] font-semibold text-zinc-300 hover:text-amber-400 transition"
+              >
+                {language === 'ar' ? p.labelAr : p.labelEn}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Modules Breakdown */}
+        <div className="space-y-3 max-h-96 overflow-y-auto pe-1">
+          {AVAILABLE_MODULES.map((mod) => {
+            const modPerms = perms[mod.id] || []
+            const isAllSelected = mod.actions.every((a) => modPerms.includes(a.key))
+
+            return (
+              <div key={mod.id} className="p-3.5 bg-zinc-950 rounded-xl border border-zinc-800/80">
+                <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-zinc-900">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white">
+                      {language === 'ar' ? mod.labelAr : mod.labelEn}
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
+                      {modPerms.length} / {mod.actions.length}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleAllForModule(perms, setPerms, mod.id, mod.actions)}
+                    className="text-[11px] text-amber-400 hover:underline font-semibold"
+                  >
+                    {isAllSelected ? (language === 'ar' ? 'إلغاء الكل' : 'Clear All') : (language === 'ar' ? 'تحديد الكل' : 'Select All')}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {mod.actions.map((act) => {
+                    const isChecked = modPerms.includes(act.key)
+                    return (
+                      <label
+                        key={act.key}
+                        className={`flex items-start gap-2.5 p-2 rounded-lg border transition cursor-pointer ${
+                          isChecked
+                            ? 'bg-amber-500/10 border-amber-500/30 text-white'
+                            : 'bg-zinc-900/50 border-zinc-800/50 text-zinc-400 hover:bg-zinc-900'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => togglePermission(perms, setPerms, mod.id, act.key)}
+                          className="rounded text-amber-500 focus:ring-0 w-4 h-4 mt-0.5 bg-zinc-950 border-zinc-700"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold">
+                              {language === 'ar' ? act.labelAr : act.labelEn}
+                            </span>
+                            {act.isDangerous && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-red-500/20 text-red-400 border border-red-500/30">
+                                حساس
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] font-mono text-zinc-500 block">
+                            {mod.id}:{act.key}
+                          </span>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -170,55 +450,56 @@ export default function UsersPage() {
           </h1>
           <p className="text-xs text-zinc-400 mt-1">
             {language === 'ar'
-              ? 'إدارة حسابات فريق العمل، تحديد الأدوار (Owner/Admin/Cashier)، والتحكم الدقيق في صلاحيات كل شاشة وخدمة'
-              : 'Manage team access, roles (Owner/Admin/Cashier), and granular per-module action permissions'}
+              ? 'إدارة صلاحيات الموظفين الدقيقة ونقاط البيع والجرد والباركود'
+              : 'Granular Role-Based Access Control, POS scanning & Stocktake permissions'}
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setGeneratedLink('')
-            setIsInviteModalOpen(true)
-          }}
-          className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20 transition"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>{t('inviteMember')}</span>
-        </button>
+        {canAddUser && (
+          <button
+            onClick={() => {
+              setGeneratedLink('')
+              setIsInviteModalOpen(true)
+            }}
+            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>{t('inviteMember')}</span>
+          </button>
+        )}
       </div>
 
-      {/* Active Users Table */}
+      {/* Team Members Table */}
       <div className="rounded-2xl bg-[#0c0c10] border border-[#1e1e26] overflow-hidden">
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-          <h2 className="text-xs font-bold text-zinc-300">Active Team Members ({users.length})</h2>
+          <h2 className="text-xs font-bold text-zinc-300">
+            {language === 'ar' ? 'أعضاء الفريق النشطين' : 'Active Team Members'} ({users.length})
+          </h2>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-start">
             <thead>
               <tr className="border-b border-zinc-800 bg-zinc-950/50 text-zinc-400">
-                <th className="p-4 text-start">User</th>
-                <th className="p-4 text-start">Email</th>
-                <th className="p-4 text-start">Role</th>
-                <th className="p-4 text-start">Active Permissions</th>
-                <th className="p-4 text-end">Action</th>
+                <th className="p-4 text-start">{t('username')}</th>
+                <th className="p-4 text-start">{t('email')}</th>
+                <th className="p-4 text-start">{t('role')}</th>
+                <th className="p-4 text-start">{language === 'ar' ? 'الصلاحيات الفعالة' : 'Permissions'}</th>
+                <th className="p-4 text-end">{t('actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/40">
               {users.map((u) => {
                 const isOwner = u.role === 'owner'
                 const isAdmin = u.role === 'admin'
-                const permsCount = Object.values(u.permissions || {}).reduce(
-                  (acc: number, list: any) => acc + (Array.isArray(list) ? list.length : 0),
-                  0
-                )
+                const permCount = Object.values(u.permissions || {}).flat().length
 
                 return (
-                  <tr key={u.id} className="hover:bg-zinc-900/30">
+                  <tr key={u.id} className="hover:bg-zinc-900/30 transition">
                     <td className="p-4 font-semibold text-white">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center text-amber-400 font-bold">
-                          {u.username.substring(0, 2).toUpperCase()}
+                        <div className="w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center text-xs font-bold text-amber-400">
+                          {u.username[0]?.toUpperCase()}
                         </div>
                         <div>
                           <span>{u.first_name ? `${u.first_name} ${u.last_name || ''}` : u.username}</span>
@@ -228,34 +509,43 @@ export default function UsersPage() {
                     </td>
                     <td className="p-4 text-zinc-400">{u.email || '—'}</td>
                     <td className="p-4">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                        isOwner
-                          ? 'bg-amber-500/20 text-amber-300 border-amber-400/50 shadow-sm shadow-amber-500/20'
-                          : isAdmin
-                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                          : 'bg-zinc-800 text-zinc-300 border-zinc-700'
-                      }`}>
-                        {isOwner ? '👑 Owner' : isAdmin ? '🛡️ Admin' : 'Staff / Cashier'}
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          isOwner
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            : isAdmin
+                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                            : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                        }`}
+                      >
+                        {isOwner && <Shield className="w-3 h-3" />}
+                        <span>{u.role}</span>
                       </span>
                     </td>
-                    <td className="p-4 text-zinc-400">
+                    <td className="p-4">
                       {isOwner || isAdmin ? (
-                        <span className="text-emerald-400 font-semibold">Full Access (All Modules)</span>
-                      ) : permsCount > 0 ? (
-                        <span className="text-amber-400 font-semibold">{permsCount} Custom Actions Active</span>
+                        <span className="text-[11px] text-amber-400 font-semibold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>{language === 'ar' ? 'وصول شامل وغير مقيد' : 'Full Access Across All Modules'}</span>
+                        </span>
                       ) : (
-                        <span className="text-zinc-500">Restricted</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-zinc-300 font-bold">{permCount}</span>
+                          <span className="text-zinc-500">{language === 'ar' ? 'صلاحية دقيقة' : 'granular rules'}</span>
+                        </div>
                       )}
                     </td>
                     <td className="p-4 text-end">
-                      <button
-                        onClick={() => openEditModal(u)}
-                        disabled={isOwner && currentUser?.role !== 'owner'}
-                        className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white rounded-lg text-[11px] font-semibold transition inline-flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 text-amber-400" />
-                        <span>{t('editPermissions')}</span>
-                      </button>
+                      {canEditUser && (
+                        <button
+                          onClick={() => openEditModal(u)}
+                          disabled={isOwner && currentUser?.role !== 'owner'}
+                          className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white rounded-lg text-[11px] font-semibold transition inline-flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{t('editPermissions')}</span>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 )
@@ -268,39 +558,44 @@ export default function UsersPage() {
       {/* Pending Invites Table */}
       <div className="rounded-2xl bg-[#0c0c10] border border-[#1e1e26] overflow-hidden">
         <div className="p-4 border-b border-zinc-800">
-          <h2 className="text-xs font-bold text-zinc-300">Pending Email Invitations ({invitations.length})</h2>
+          <h2 className="text-xs font-bold text-zinc-300">
+            {language === 'ar' ? 'الدعوات المعلقة' : 'Pending Email Invitations'} ({invitations.length})
+          </h2>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-start">
             <thead>
               <tr className="border-b border-zinc-800 bg-zinc-950/50 text-zinc-400">
-                <th className="p-4 text-start">Target Email</th>
-                <th className="p-4 text-start">Assigned Role</th>
-                <th className="p-4 text-start">Expires At</th>
-                <th className="p-4 text-end">Action</th>
+                <th className="p-4 text-start">{language === 'ar' ? 'البريد الإلكتروني' : 'Target Email'}</th>
+                <th className="p-4 text-start">{t('role')}</th>
+                <th className="p-4 text-start">{language === 'ar' ? 'تاريخ الانتهاء' : 'Expires At'}</th>
+                <th className="p-4 text-end">{t('actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/40">
               {invitations.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="p-6 text-center text-zinc-500">
-                    No pending invitations
+                    {language === 'ar' ? 'لا توجد دعوات معلقة حالياً' : 'No pending invitations'}
                   </td>
                 </tr>
               ) : (
                 invitations.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-zinc-900/30">
+                  <tr key={inv.id} className="hover:bg-zinc-900/30 transition">
                     <td className="p-4 font-semibold text-white">{inv.email}</td>
                     <td className="p-4 text-zinc-400 capitalize">{inv.role}</td>
                     <td className="p-4 text-zinc-500">{new Date(inv.expires_at).toLocaleString()}</td>
                     <td className="p-4 text-end">
-                      <button
-                        onClick={() => handleDeleteInvite(inv.id)}
-                        className="text-zinc-500 hover:text-red-400 p-1"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canDeleteUser && (
+                        <button
+                          onClick={() => handleDeleteInvite(inv.id)}
+                          className="text-zinc-500 hover:text-red-400 p-1 transition"
+                          title={language === 'ar' ? 'إلغاء الدعوة' : 'Revoke Invitation'}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -310,7 +605,7 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {/* Modal: Edit User Role & Permissions */}
+      {/* Modal: Edit User Role & Granular Permissions */}
       {isEditModalOpen && editingUser && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="w-full max-w-2xl bg-[#0c0c10] border border-zinc-800 rounded-2xl p-6 shadow-2xl my-8">
@@ -352,47 +647,7 @@ export default function UsersPage() {
               {/* Permissions Matrix */}
               {editRole !== 'admin' && editRole !== 'owner' ? (
                 <div className="pt-3 border-t border-zinc-800">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold text-zinc-200">
-                      {language === 'ar' ? 'مصفوفة الصلاحيات الدقيقة لكل شاشة:' : 'Granular Permissions Matrix:'}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2.5 max-h-80 overflow-y-auto p-1">
-                    {AVAILABLE_MODULES.map((mod) => {
-                      const modPerms = editPermissions[mod.id] || []
-                      return (
-                        <div key={mod.id} className="p-3 bg-zinc-950 rounded-xl border border-zinc-800/80">
-                          <div className="flex items-center justify-between pb-2 mb-2 border-b border-zinc-900">
-                            <span className="text-xs font-bold text-white">
-                              {language === 'ar' ? mod.labelAr : mod.labelEn}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => toggleAllForModule(editPermissions, setEditPermissions, mod.id, mod.actions)}
-                              className="text-[10px] text-amber-400 hover:underline"
-                            >
-                              {mod.actions.every((a) => modPerms.includes(a)) ? 'Clear' : 'Select All'}
-                            </button>
-                          </div>
-
-                          <div className="flex flex-wrap gap-4">
-                            {mod.actions.map((act) => (
-                              <label key={act} className="flex items-center gap-1.5 cursor-pointer text-xs text-zinc-300 hover:text-white">
-                                <input
-                                  type="checkbox"
-                                  checked={modPerms.includes(act)}
-                                  onChange={() => togglePermission(editPermissions, setEditPermissions, mod.id, act)}
-                                  className="rounded text-amber-500 focus:ring-0 w-3.5 h-3.5 bg-zinc-900 border-zinc-700"
-                                />
-                                <span className="uppercase text-[10px] font-bold text-zinc-400">{act}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  {renderPermissionsMatrix(editPermissions, setEditPermissions)}
                 </div>
               ) : (
                 <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
@@ -426,7 +681,7 @@ export default function UsersPage() {
       {/* Modal: Invite Member */}
       {isInviteModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="w-full max-w-lg bg-[#0c0c10] border border-zinc-800 rounded-2xl p-6 shadow-2xl my-8">
+          <div className="w-full max-w-2xl bg-[#0c0c10] border border-zinc-800 rounded-2xl p-6 shadow-2xl my-8">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-800 mb-4">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <UserPlus className="w-4 h-4 text-amber-400" />
@@ -489,33 +744,7 @@ export default function UsersPage() {
                 {inviteRole !== 'admin' && (
                   <div className="pt-2 border-t border-zinc-800">
                     <span className="block text-xs font-bold text-zinc-300 mb-2">{t('permissionsLabel')}</span>
-                    <div className="space-y-2 max-h-56 overflow-y-auto">
-                      {AVAILABLE_MODULES.map((mod) => {
-                        const modPerms = invitePermissions[mod.id] || []
-                        return (
-                          <div key={mod.id} className="p-2.5 bg-zinc-950 rounded-lg border border-zinc-800">
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="text-xs font-bold text-white">
-                                {language === 'ar' ? mod.labelAr : mod.labelEn}
-                              </span>
-                            </div>
-                            <div className="flex flex-wrap gap-3">
-                              {mod.actions.map((act) => (
-                                <label key={act} className="flex items-center gap-1 cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={modPerms.includes(act)}
-                                    onChange={() => togglePermission(invitePermissions, setInvitePermissions, mod.id, act)}
-                                    className="rounded text-amber-500 focus:ring-0 w-3.5 h-3.5"
-                                  />
-                                  <span className="text-[10px] uppercase font-bold text-zinc-400">{act}</span>
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
+                    {renderPermissionsMatrix(invitePermissions, setInvitePermissions)}
                   </div>
                 )}
 

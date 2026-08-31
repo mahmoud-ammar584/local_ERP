@@ -11,10 +11,15 @@ import {
   Supplier,
   Product,
 } from '@/lib/api'
-import { Truck, Plus, Package, Calendar, DollarSign, X } from 'lucide-react'
+import { hasPermission } from '@/lib/auth'
+import { Truck, Plus, Package, Calendar, DollarSign, X, Lock } from 'lucide-react'
 
 export default function PurchasesPage() {
   const { t, language } = useLanguage()
+
+  const canView = hasPermission('purchases', 'view')
+  const canAdd = hasPermission('purchases', 'add')
+
   const [orders, setOrders] = useState<PurchaseOrder[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -46,12 +51,20 @@ export default function PurchasesPage() {
   }
 
   useEffect(() => {
-    loadData()
-  }, [])
+    if (canView) {
+      loadData()
+    } else {
+      setLoading(false)
+    }
+  }, [canView])
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!supplierId) return
+    if (!canAdd) {
+      alert('ليس لديك صلاحية لإنشاء أمر شراء')
+      return
+    }
     setSaving(true)
     try {
       await createPurchaseOrder({
@@ -70,6 +83,24 @@ export default function PurchasesPage() {
     }
   }
 
+  if (!canView) {
+    return (
+      <div className="p-8 rounded-2xl bg-[#0c0c10] border border-red-500/30 text-center space-y-3">
+        <div className="w-12 h-12 rounded-xl bg-red-500/10 text-red-400 flex items-center justify-center mx-auto">
+          <Lock className="w-6 h-6" />
+        </div>
+        <h2 className="text-base font-bold text-white">
+          {language === 'ar' ? 'غير مصرح بالوصول إلى المشتريات' : 'Access Restricted to Purchases'}
+        </h2>
+        <p className="text-xs text-zinc-400 max-w-md mx-auto">
+          {language === 'ar'
+            ? 'يتطلب حسابك الحصول على صلاحية عرض أوامر الشراء من قبل الإدارة.'
+            : 'Your account does not have permission to view purchase orders.'}
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -85,13 +116,15 @@ export default function PurchasesPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl text-xs flex items-center gap-2 transition"
-        >
-          <Plus className="w-4 h-4" />
-          <span>{t('newPurchaseOrder')}</span>
-        </button>
+        {canAdd && (
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl text-xs flex items-center gap-2 transition"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{t('newPurchaseOrder')}</span>
+          </button>
+        )}
       </div>
 
       <div className="rounded-2xl bg-[#0c0c10] border border-[#1e1e26] overflow-hidden">
@@ -138,11 +171,14 @@ export default function PurchasesPage() {
       </div>
 
       {/* Modal: New PO */}
-      {isModalOpen && (
+      {isModalOpen && canAdd && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-[#0c0c10] border border-zinc-800 rounded-2xl p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800 mb-4">
-              <h2 className="text-sm font-bold text-white">{t('newPurchaseOrder')}</h2>
+          <div className="w-full max-w-md bg-[#0c0c10] border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                <Plus className="w-4 h-4 text-amber-400" />
+                <span>{t('newPurchaseOrder')}</span>
+              </h2>
               <button onClick={() => setIsModalOpen(false)} className="text-zinc-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
@@ -152,14 +188,16 @@ export default function PurchasesPage() {
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('supplier')}</label>
                 <select
+                  required
                   value={supplierId}
                   onChange={(e) => setSupplierId(e.target.value)}
-                  required
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
                 >
                   <option value="">Select Supplier</option>
                   {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -170,14 +208,14 @@ export default function PurchasesPage() {
                   type="text"
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
-                  placeholder="e.g. INV-2025-08"
+                  placeholder="e.g. INV-2026-08"
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('shippingCost')}</label>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('shippingCost')} (EGP)</label>
                   <input
                     type="number"
                     value={shippingCost}
@@ -186,7 +224,7 @@ export default function PurchasesPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('customsCost')}</label>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('customsCost')} (EGP)</label>
                   <input
                     type="number"
                     value={customsCost}

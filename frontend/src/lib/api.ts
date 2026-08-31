@@ -39,18 +39,26 @@ export interface TopCustomerItem {
 
 export interface ProductVariant {
   id: number
+  product?: number
   color: string
   size: string
   sku_suffix: string
   full_sku?: string
+  barcode?: string
   current_quantity?: number
   stock_quantity?: number
   effective_price?: number
+  model_name?: string
+  brand_name?: string
+  brand_id?: number
+  category_name?: string
+  suggested_selling_price?: number
 }
 
 export interface Product {
   id: number
   sku: string
+  barcode?: string
   model_name: string
   brand: number
   brand_name?: string
@@ -67,6 +75,62 @@ export interface Product {
   total_stock?: number
   current_quantity?: number
   created_at: string
+}
+
+export interface PaymentMethod {
+  id: number
+  name: string
+  code?: string
+  is_active: boolean
+  is_default?: boolean
+}
+
+export interface TaxRate {
+  id: number
+  name: string
+  rate: number
+  is_active: boolean
+}
+
+export interface StockAuditItem {
+  id: number
+  audit: number
+  variant: number
+  variant_sku: string
+  product_name: string
+  brand_name: string
+  category_name?: string
+  color: string
+  size: string
+  barcode?: string
+  effective_price?: number
+  expected_quantity: number
+  counted_quantity: number
+  unit_cost: number
+  discrepancy: number
+  discrepancy_value: number
+  discrepancy_type: 'matched' | 'surplus' | 'deficit'
+  notes?: string
+  last_scanned_at?: string
+  created_at: string
+}
+
+export interface StockAudit {
+  id: number
+  title: string
+  status: 'draft' | 'in_progress' | 'completed' | 'cancelled'
+  created_by?: number
+  created_by_name?: string
+  notes?: string
+  created_at: string
+  completed_at?: string
+  reconciled_at?: string
+  total_expected_items: number
+  total_counted_items: number
+  total_variance_items: number
+  total_variance_cost: number | string
+  items_count?: number
+  items?: StockAuditItem[]
 }
 
 export interface Customer {
@@ -102,9 +166,13 @@ export interface SalesTransaction {
   discount_amount: number
   tax_amount: number
   final_amount: number
+  final_total?: number
   paid_amount: number
   remaining_amount: number
   transaction_date: string
+  created_at?: string
+  created_by_name?: string
+  lines?: any[]
   items?: SalesItem[]
 }
 
@@ -131,15 +199,18 @@ export interface PurchaseOrder {
 export interface ExpenseCategory {
   id: number
   name: string
+  code?: string
+  description?: string
 }
 
 export interface Expense {
   id: number
-  category: string | number
+  category: number | string
   category_name?: string
   amount: number
   expense_date: string
   notes?: string
+  receipt?: string
 }
 
 export interface StoreInfo {
@@ -155,11 +226,52 @@ export interface StoreInfo {
 export interface Brand { id: number; name: string }
 export interface Category { id: number; name: string }
 export interface Supplier { id: number; name: string; contact_person?: string; phone?: string }
-export interface PaymentMethod { id: number; name: string; code?: string }
 export interface Currency { id: number; code: string; name: string; exchange_rate_to_base: number }
-export interface TaxRate { id: number; name: string; percentage: number }
 
-// --- API Functions ---
+export interface DashboardSummary {
+  period: string
+  total_sales: number
+  total_cogs: number
+  gross_profit: number
+  total_expenses: number
+  net_profit: number
+  inventory_value: number
+  low_stock_count: number
+  total_orders: number
+  average_order_value: number
+}
+
+export interface SalesOverTimeItem {
+  date: string
+  sales: number
+  orders_count: number
+}
+
+export interface ExpenseByCategoryItem {
+  category_name: string
+  total_amount: number
+}
+
+export interface TopProductItem {
+  variant_id: number
+  product_name: string
+  brand_name: string
+  color: string
+  size: string
+  sku: string
+  total_sold: number
+  total_revenue: number
+}
+
+export interface TopCustomerItem {
+  id: number
+  name: string
+  phone: string
+  total_spent: number
+  orders_count: number
+}
+
+// ---------------- API CLIENT FUNCTIONS ----------------
 
 // Dashboard
 export const getDashboardSummary = (period = 'month') =>
@@ -175,32 +287,71 @@ export const getTopProducts = (period = 'month') =>
   fetchJson<TopProductItem[]>(`/api/dashboard/top-products/?period=${period}`)
 
 export const getTopCustomers = () =>
-  fetchJson<TopCustomerItem[]>(`/api/dashboard/top-customers/`)
+  fetchJson<TopCustomerItem[]>('/api/dashboard/top-customers/')
 
-// Inventory
+// Inventory & Products
 export const getProducts = (params = '') =>
   fetchJson<Product[] | { results: Product[] }>(`/api/inventory/products/${params ? '?' + params : ''}`)
 
 export const getProduct = (id: number) =>
   fetchJson<Product>(`/api/inventory/products/${id}/`)
 
-export const createProduct = (data: Partial<Product>) =>
-  fetchJson<Product>('/api/inventory/products/', { method: 'POST', body: JSON.stringify(data) })
+export const createProduct = (data: Record<string, unknown>) =>
+  fetchJson<Product>('/api/inventory/products/', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
 
-export const updateProduct = (id: number, data: Partial<Product>) =>
-  fetchJson<Product>(`/api/inventory/products/${id}/`, { method: 'PUT', body: JSON.stringify(data) })
-
-export const deleteProduct = (id: number) =>
-  fetchJson(`/api/inventory/products/${id}/`, { method: 'DELETE' })
-
-export const lookupProductBySku = (sku: string) =>
-  fetchJson<ProductVariant>(`/api/inventory/products/lookup/?sku=${encodeURIComponent(sku)}`)
+export const updateProduct = (id: number, data: Record<string, unknown>) =>
+  fetchJson<Product>(`/api/inventory/products/${id}/`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
 
 export const adjustProductStock = (variantId: number, newQuantity: number, reason: string) =>
-  fetchJson('/api/inventory/products/adjust-stock/', {
+  fetchJson<any>(`/api/inventory/products/${variantId}/adjust_stock/`, {
     method: 'POST',
-    body: JSON.stringify({ variant_id: variantId, new_quantity: newQuantity, reason }),
+    body: JSON.stringify({ new_quantity: newQuantity, reason }),
   })
+
+export const lookupProductBySku = (sku: string) =>
+  fetchJson<ProductVariant>(`/api/inventory/products/lookup/?q=${encodeURIComponent(sku)}`)
+
+// Stocktake & Audits
+export const getStockAudits = () =>
+  fetchJson<StockAudit[] | { results: StockAudit[] }>('/api/inventory/stock-audits/')
+
+export const getStockAudit = (id: number) =>
+  fetchJson<StockAudit>(`/api/inventory/stock-audits/${id}/`)
+
+export const createStockAudit = (title: string, notes?: string) =>
+  fetchJson<StockAudit>('/api/inventory/stock-audits/', {
+    method: 'POST',
+    body: JSON.stringify({ title, notes }),
+  })
+
+export const scanStockAuditItem = (auditId: number, sku: string, quantity = 1) =>
+  fetchJson<StockAudit>(
+    `/api/inventory/stock-audits/${auditId}/scan/`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ sku, quantity }),
+    }
+  )
+
+export const setStockAuditItemCount = (auditId: number, itemId: number, countedQuantity: number, notes?: string) =>
+  fetchJson<StockAudit>(`/api/inventory/stock-audits/${auditId}/set-item-count/`, {
+    method: 'POST',
+    body: JSON.stringify({ item_id: itemId, counted_quantity: countedQuantity, notes }),
+  })
+
+export const reconcileStockAudit = (auditId: number) =>
+  fetchJson<StockAudit>(`/api/inventory/stock-audits/${auditId}/reconcile/`, {
+    method: 'POST',
+  })
+
+export const exportStockAuditCsvUrl = (auditId: number) =>
+  `/api/inventory/stock-audits/${auditId}/export-csv/`
 
 // Sales
 export const getSalesTransactions = (params = '') =>

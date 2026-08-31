@@ -32,13 +32,37 @@ class Profile(models.Model):
     permissions = models.JSONField(default=dict, blank=True)
 
     def has_permission(self, module, action):
-        """Check if profile has specific action permission for a module"""
+        """
+        Check if profile has specific action permission for a module.
+        Supports both direct action names and hierarchical fallback.
+        """
         if self.role in ['owner', 'admin']:
             return True
         if not self.permissions or not isinstance(self.permissions, dict):
             return False
+
         module_perms = self.permissions.get(module, [])
-        return action in module_perms
+        if not isinstance(module_perms, list):
+            return False
+
+        # Direct match (e.g. 'stocktake_reconcile', 'print_barcode', 'adjust_stock')
+        if action in module_perms:
+            return True
+
+        # Hierarchical fallback:
+        # 'edit' grants adjust_stock, stocktake_reconcile, receive
+        if action in ['adjust_stock', 'stocktake_reconcile', 'receive'] and 'edit' in module_perms:
+            return True
+
+        # 'add' grants stocktake_count, stocktake_create
+        if action in ['stocktake_count', 'stocktake_create'] and 'add' in module_perms:
+            return True
+
+        # 'view' grants stocktake_view, print_barcode, export_csv, apply_discount
+        if action in ['stocktake_view', 'print_barcode', 'export_csv', 'apply_discount'] and 'view' in module_perms:
+            return True
+
+        return False
 
     def __str__(self):
         company_name = self.company.name if self.company else "No Company"

@@ -47,13 +47,23 @@ export function isAuthenticated(): boolean {
   return !!getToken()
 }
 
-export function hasPermission(module: string, action: 'view' | 'add' | 'edit' | 'delete'): boolean {
+export function hasPermission(module: string, action: string): boolean {
   const user = getUser()
   if (!user) return false
   if (user.role === 'owner' || user.role === 'admin') return true
   const perms = user.permissions || {}
   const modulePerms = perms[module] || []
-  return modulePerms.includes(action)
+  if (!Array.isArray(modulePerms)) return false
+
+  // Direct match
+  if (modulePerms.includes(action)) return true
+
+  // Hierarchical fallback
+  if (['adjust_stock', 'stocktake_reconcile', 'receive'].includes(action) && modulePerms.includes('edit')) return true
+  if (['stocktake_count', 'stocktake_create'].includes(action) && modulePerms.includes('add')) return true
+  if (['stocktake_view', 'print_barcode', 'export_csv', 'apply_discount'].includes(action) && modulePerms.includes('view')) return true
+
+  return false
 }
 
 export function getDefaultRoute(): string {

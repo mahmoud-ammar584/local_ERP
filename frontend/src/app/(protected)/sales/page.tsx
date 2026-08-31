@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useLanguage } from '@/lib/i18n'
 import {
   getProducts,
@@ -9,13 +9,17 @@ import {
   getTaxRates,
   getSalesTransactions,
   createSalesTransaction,
+  lookupProductBySku,
   Product,
   Customer,
   PaymentMethod,
   TaxRate,
   SalesTransaction,
 } from '@/lib/api'
-import { getUser } from '@/lib/auth'
+import { getUser, hasPermission } from '@/lib/auth'
+import { soundFx } from '@/lib/sound'
+import { BarcodeDisplay } from '@/components/BarcodeDisplay'
+import { BarcodeLabelModal, LabelProductData } from '@/components/BarcodeLabelModal'
 import {
   ShoppingCart,
   Plus,
@@ -29,7 +33,12 @@ import {
   Sparkles,
   X,
   Receipt,
-  QrCode,
+  ScanLine,
+  Barcode,
+  Search,
+  Check,
+  Tag,
+  Lock,
 } from 'lucide-react'
 
 interface CartItem {
@@ -41,11 +50,21 @@ interface CartItem {
   quantity: number
   discount: number // percentage
   maxStock: number
+  brandName?: string
+  color?: string
+  size?: string
 }
 
 export default function SalesPage() {
   const { t, language } = useLanguage()
   const currentUser = getUser()
+
+  // Granular Permissions
+  const canAddSale = hasPermission('sales', 'add')
+  const canViewSales = hasPermission('sales', 'view')
+  const canApplyDiscount = hasPermission('sales', 'apply_discount')
+  const canPrintBarcode = hasPermission('inventory', 'print_barcode')
+  const canExportCsv = hasPermission('sales', 'export_csv')
 
   const [activeTab, setActiveTab] = useState<'pos' | 'history'>('pos')
 
@@ -59,6 +78,16 @@ export default function SalesPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<string>('')
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('')
   const [transactionDiscount, setTransactionDiscount] = useState<number>(0)
+
+  // Quick Barcode Scanning State
+  const [barcodeInput, setBarcodeInput] = useState('')
+  const [isScanning, setIsScanning] = useState(false)
+  const [scanToast, setScanToast] = useState<string | null>(null)
+  const scannerInputRef = useRef<HTMLInputElement>(null)
+
+  // Label Print Modal State
+  const [labelModalProduct, setLabelModalProduct] = useState<LabelProductData | null>(null)
+  const [isLabelModalOpen, setIsLabelModalOpen] = useState(false)
 
   // Transaction History State
   const [transactions, setTransactions] = useState<SalesTransaction[]>([])
@@ -77,7 +106,7 @@ export default function SalesPage() {
         getCustomers(),
         getPaymentMethods(),
         getTaxRates(),
-        getSalesTransactions(),
+        canViewSales ? getSalesTransactions() : Promise.resolve([]),
       ])
 
       const pList = Array.isArray(pRes) ? pRes : (pRes as any).results || []
@@ -106,12 +135,125 @@ export default function SalesPage() {
     loadInitialData()
   }, [])
 
+  // Auto-focus scanner input when POS tab becomes active
+  useEffect(() => {
+    if (activeTab === 'pos' && canAddSale) {
+      setTimeout(() => {
+        scannerInputRef.current?.focus()
+      }, 100)
+    }
+  }, [activeTab, canAddSale])
+
+  // Global Keyboard Shortcuts (F2 = Focus Scanner, F9 = Checkout)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F2') {
+        e.preventDefault()
+        scannerInputRef.current?.focus()
+        scannerInputRef.current?.select()
+      } else if (e.key === 'F9' || (e.ctrlKey && e.key === 'Enter')) {
+        e.preventDefault()
+        if (cart.length > 0 && !completing && canAddSale) {
+          handleCheckout()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [cart, completing, canAddSale])
+
+  // Scan or SKU Submit Handler
+  const handleBarcodeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canAddSale) {
+      soundFx.playScanWarning()
+      setError('ليس لديك صلاحية لإتمام عمليات البيع')
+      return
+    }
+    const code = barcodeInput.trim()
+    if (!code) return
+
+    setError('')
+    setIsScanning(true)
+
+    try {
+      // 1. Check if the SKU/Variant is already in cart
+      const existingIdx = cart.findIndex(
+        (i) => i.sku.toLowerCase() === code.toLowerCase()
+      )
+
+      if (existingIdx > -1) {
+        const updated = [...cart]
+        updated[existingIdx].quantity += 1
+        setCart(updated)
+        soundFx.playScanSuccess()
+        setScanToast(`+1 ${updated[existingIdx].name} (${updated[existingIdx].sku})`)
+        setTimeout(() => setScanToast(null), 2500)
+        setBarcodeInput('')
+        return
+      }
+
+      // 2. Lookup SKU or Barcode from backend
+      const variant = await lookupProductBySku(code)
+      if (variant) {
+        const variantId = variant.id
+        const variantSku = variant.full_sku || variant.sku_suffix || code
+        const unitPrice = Number(variant.effective_price || variant.suggested_selling_price || 0)
+        const maxStock = variant.stock_quantity ?? variant.current_quantity ?? 999
+
+        // Check if now found in cart by variant ID
+        const existingByIdx = cart.findIndex((i) => i.variantId === variantId)
+        if (existingByIdx > -1) {
+          const updated = [...cart]
+          updated[existingByIdx].quantity += 1
+          setCart(updated)
+        } else {
+          setCart((prev) => [
+            ...prev,
+            {
+              productId: variant.product || variant.id,
+              variantId: variantId,
+              sku: variantSku,
+              name: variant.model_name || 'Product',
+              price: unitPrice,
+              quantity: 1,
+              discount: 0,
+              maxStock: maxStock,
+              brandName: variant.brand_name,
+              color: variant.color,
+              size: variant.size,
+            },
+          ])
+        }
+
+        soundFx.playScanSuccess()
+        setScanToast(`+1 ${variant.model_name || 'Item'} (${variantSku})`)
+        setTimeout(() => setScanToast(null), 2500)
+        setBarcodeInput('')
+      } else {
+        soundFx.playScanWarning()
+        setError(language === 'ar' ? `لم يتم العثور على صنف بالرمز "${code}"` : `No item found for barcode "${code}"`)
+      }
+    } catch (err: any) {
+      soundFx.playScanWarning()
+      setError(err.message || `No product found for SKU / Barcode "${code}"`)
+    } finally {
+      setIsScanning(false)
+      scannerInputRef.current?.focus()
+    }
+  }
+
   // Cart operations
   const addToCart = (product: Product, variantIndex = 0) => {
+    if (!canAddSale) {
+      alert('ليس لديك صلاحية لإتمام عمليات البيع')
+      return
+    }
     const variant = product.variants?.[variantIndex]
     const variantId = variant ? variant.id : product.id
-    const variantSku = (variant?.full_sku || variant?.sku_suffix || product.sku || '')
+    const variantSku = variant?.full_sku || variant?.sku_suffix || product.sku || ''
     const availableStock = variant?.stock_quantity ?? variant?.current_quantity ?? 999
+    const price = Number(variant?.effective_price || product.suggested_selling_price || 0)
 
     const existingIndex = cart.findIndex((item) => item.variantId === variantId)
     if (existingIndex > -1) {
@@ -126,13 +268,17 @@ export default function SalesPage() {
           variantId: variantId,
           sku: variantSku,
           name: product.model_name,
-          price: Number(product.suggested_selling_price) || 0,
+          price: price,
           quantity: 1,
           discount: 0,
           maxStock: availableStock,
+          brandName: product.brand_name,
+          color: variant?.color,
+          size: variant?.size,
         },
       ])
     }
+    soundFx.playScanSuccess()
   }
 
   const updateCartQty = (index: number, delta: number) => {
@@ -150,47 +296,90 @@ export default function SalesPage() {
     setCart(updated)
   }
 
-  // Calculations
-  const subtotal = cart.reduce((acc, i) => acc + i.price * i.quantity * (1 - i.discount / 100), 0)
-  const finalTotal = Math.max(0, subtotal - transactionDiscount)
+  // Open barcode label modal for any cart item or product
+  const handleOpenLabelModal = (item: CartItem | Product) => {
+    if (!canPrintBarcode) {
+      alert('ليس لديك صلاحية لطباعة ملصقات الباركود')
+      return
+    }
+    if ('model_name' in item) {
+      // Product
+      setLabelModalProduct({
+        model_name: item.model_name,
+        brand_name: item.brand_name,
+        sku: item.sku,
+        barcode: item.barcode,
+        price: item.suggested_selling_price,
+        current_quantity: item.current_quantity,
+      })
+    } else {
+      // CartItem
+      setLabelModalProduct({
+        model_name: item.name,
+        brand_name: item.brandName,
+        color: item.color,
+        size: item.size,
+        sku: item.sku,
+        price: item.price,
+      })
+    }
+    setIsLabelModalOpen(true)
+  }
 
+  // Calculations
+  const subtotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0)
+  const itemDiscounts = cart.reduce(
+    (acc, item) => acc + item.price * item.quantity * (item.discount / 100),
+    0
+  )
+  const totalAfterItemDiscounts = subtotal - itemDiscounts
+  const appliedDiscount = canApplyDiscount ? transactionDiscount : 0
+  const finalTotal = Math.max(0, totalAfterItemDiscounts - appliedDiscount)
+
+  // Handle Checkout Submission
   const handleCheckout = async () => {
+    if (!canAddSale) {
+      alert('ليس لديك صلاحية لإتمام عمليات البيع')
+      return
+    }
     if (cart.length === 0) return
     setError('')
     setCompleting(true)
-    try {
-      const defaultTaxId = taxRates[0]?.id || 1
-      const payload = {
-        customer: selectedCustomer ? Number(selectedCustomer) : null,
-        payment_method: selectedPaymentMethod ? Number(selectedPaymentMethod) : (paymentMethods[0]?.id || 1),
-        transaction_date: new Date().toISOString(),
-        overall_discount_percentage: 0,
-        discount_amount: transactionDiscount,
-        paid_amount: finalTotal,
-        items: cart.map((item) => ({
-          product: item.productId,
-          variant: item.variantId,
-          quantity_sold: item.quantity,
-          unit_price: item.price,
-          item_discount_percentage: item.discount,
-          tax_rate: defaultTaxId,
-        })),
-      }
 
-      const tx = await createSalesTransaction(payload)
-      setInvoiceModalTx(tx)
+    const defaultPaymentMethod =
+      paymentMethods.find((p) => p.is_default) || paymentMethods[0]
+    const chosenMethodId = selectedPaymentMethod
+      ? Number(selectedPaymentMethod)
+      : defaultPaymentMethod?.id
+
+    if (!chosenMethodId) {
+      setError('Please configure at least one payment method.')
+      setCompleting(false)
+      return
+    }
+
+    const payload = {
+      customer: selectedCustomer ? Number(selectedCustomer) : undefined,
+      payment_method: chosenMethodId,
+      discount_amount: appliedDiscount,
+      lines: cart.map((item) => ({
+        product_variant: item.variantId,
+        quantity: item.quantity,
+        unit_price: item.price,
+        discount_percentage: item.discount,
+      })),
+    }
+
+    try {
+      const res = await createSalesTransaction(payload)
+      soundFx.playCheckoutSuccess()
+      setInvoiceModalTx(res)
       setCart([])
       setTransactionDiscount(0)
       loadInitialData()
     } catch (err: any) {
-      let msg = err.message || 'Checkout failed'
-      if (err.details) {
-        if (typeof err.details === 'object' && (err.details as any).items) {
-          const itm = (err.details as any).items
-          msg = Array.isArray(itm) ? (typeof itm[0] === 'object' ? JSON.stringify(itm[0]) : itm[0]) : String(itm)
-        }
-      }
-      setError(msg)
+      soundFx.playScanWarning()
+      setError(err.message || 'Checkout failed. Please check stock levels.')
     } finally {
       setCompleting(false)
     }
@@ -216,411 +405,447 @@ export default function SalesPage() {
           </h1>
           <p className="text-xs text-zinc-400 mt-1">
             {language === 'ar'
-              ? 'إصدار الفواتير الفورية وإدارة عمليات البيع لعملاء المتجر'
-              : 'Instant checkout, VIP discounting & invoice generation'}
+              ? 'إصدار الفواتير الفورية، الدفع بالماسح الضوئي (SKU & Barcode)، وطباعة الإيصالات'
+              : 'Rapid barcode scanning checkout, instant VIP discounts & invoice generation'}
           </p>
         </div>
 
-        <div className="flex items-center p-1 rounded-xl bg-zinc-900 border border-zinc-800">
-          <button
-            onClick={() => setActiveTab('pos')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'pos' ? 'bg-amber-400 text-zinc-950 shadow' : 'text-zinc-400 hover:text-white'
-            }`}
-          >
-            {t('newSale')}
-          </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-              activeTab === 'history' ? 'bg-amber-400 text-zinc-950 shadow' : 'text-zinc-400 hover:text-white'
-            }`}
-          >
-            <History className="w-3.5 h-3.5" />
-            <span>{t('salesHistory')}</span>
-          </button>
-        </div>
+        {canViewSales && (
+          <div className="flex items-center p-1 rounded-xl bg-zinc-900 border border-zinc-800">
+            <button
+              onClick={() => setActiveTab('pos')}
+              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
+                activeTab === 'pos' ? 'bg-amber-400 text-zinc-950 shadow' : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              {t('newSale')}
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                activeTab === 'history' ? 'bg-amber-400 text-zinc-950 shadow' : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>{t('salesHistory')}</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {activeTab === 'pos' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left / Center 2 Cols: Products Grid */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="p-4 rounded-2xl bg-[#0c0c10] border border-[#1e1e26]">
-              <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3">
-                {language === 'ar' ? 'اختر المنتجات لإضافتها للسلة' : 'Catalog Quick Select'}
-              </h2>
+        <div className="space-y-4">
+          {/* Quick Barcode Scanner Bar (Always Ready) */}
+          {canAddSale ? (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-zinc-900 to-zinc-900 border border-amber-500/30 shadow-lg relative overflow-hidden">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <form
+                  onSubmit={handleBarcodeSubmit}
+                  className="flex-1 flex items-center gap-2 relative"
+                >
+                  <div className="relative flex-1">
+                    <div className="absolute inset-y-0 start-0 flex items-center ps-3.5 pointer-events-none text-amber-400">
+                      <Barcode className="w-5 h-5 animate-pulse" />
+                    </div>
+                    <input
+                      ref={scannerInputRef}
+                      type="text"
+                      value={barcodeInput}
+                      onChange={(e) => setBarcodeInput(e.target.value)}
+                      placeholder={
+                        language === 'ar'
+                          ? 'امسح الباركود بالماسح الضوئي أو اكتب كود الـ SKU واضغط Enter... [اختصار F2]'
+                          : 'Scan barcode gun or type SKU and hit Enter... [Hotkey: F2]'
+                      }
+                      className="w-full ps-11 pe-4 py-3 bg-zinc-950 border border-amber-500/40 focus:border-amber-400 rounded-xl text-sm font-mono text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-amber-400/20 transition shadow-inner"
+                      autoFocus
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!barcodeInput.trim() || isScanning}
+                    className="px-5 py-3 bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold rounded-xl text-xs flex items-center gap-2 transition disabled:opacity-50 shrink-0 shadow-md"
+                  >
+                    <ScanLine className="w-4 h-4" />
+                    <span>{language === 'ar' ? 'إضافة للسلة' : 'Add Item'}</span>
+                  </button>
+                </form>
 
+                {/* Status / Scan Toast Indicator */}
+                <div className="flex items-center gap-2 text-xs">
+                  {scanToast ? (
+                    <div className="px-3 py-1.5 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-lg font-semibold flex items-center gap-1.5 animate-bounce">
+                      <Check className="w-4 h-4" />
+                      <span>{scanToast}</span>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-zinc-400 font-mono hidden lg:flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                      <span>{language === 'ar' ? 'الماسح الضوئي متصل وجاهز' : 'Scanner Gun Ready'}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-400 flex items-center gap-2">
+              <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>{language === 'ar' ? 'ليس لديك صلاحية لإتمام عمليات البيع والإضافة إلى السلة.' : 'You do not have permission to perform sales checkouts.'}</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400 flex items-center justify-between animate-shake">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+              <button onClick={() => setError('')} className="text-zinc-500 hover:text-white">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Grid Layout: Catalog on Left, POS Cart on Right */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Products Quick Catalog (2 Cols) */}
+            <div className="lg:col-span-2 space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {products.map((p) => {
-                  const stock = p.variants?.reduce(
-                    (acc, v) => acc + (v.stock_quantity ?? v.current_quantity ?? 0),
-                    0
-                  ) ?? (p.current_quantity ?? 0)
+                  const defaultVariant = p.variants?.[0]
+                  const stock = defaultVariant?.stock_quantity ?? defaultVariant?.current_quantity ?? 0
+                  const isOutOfStock = stock <= 0
 
                   return (
-                    <button
+                    <div
                       key={p.id}
-                      onClick={() => addToCart(p, 0)}
-                      className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800/80 hover:border-amber-500/50 text-start group transition flex flex-col justify-between"
+                      className={`p-4 rounded-2xl bg-[#0c0c10] border border-[#1e1e26] hover:border-amber-500/40 transition flex flex-col justify-between group relative overflow-hidden ${
+                        isOutOfStock ? 'opacity-60' : ''
+                      }`}
                     >
-                      <div>
-                        <span className="text-[10px] font-mono text-amber-400/80 block truncate">{p.sku}</span>
-                        <span className="text-xs font-bold text-white block mt-0.5 truncate group-hover:text-amber-400">
+                      <div className="space-y-1">
+                        <div className="flex items-start justify-between gap-1">
+                          <span className="text-[10px] font-mono text-zinc-500 block truncate">
+                            {p.sku}
+                          </span>
+                          {canPrintBarcode && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleOpenLabelModal(p)
+                              }}
+                              title={language === 'ar' ? 'طباعة باركود' : 'Print Barcode'}
+                              className="text-zinc-600 hover:text-amber-400 transition"
+                            >
+                              <Tag className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        <h3 className="font-bold text-white text-xs truncate group-hover:text-amber-400 transition">
                           {p.model_name}
-                        </span>
-                        <span className="text-[10px] text-zinc-400 block mt-0.5">
-                          {p.brand_name || 'Fashion'} • Stock: {stock}
-                        </span>
+                        </h3>
+                        <p className="text-[10px] text-zinc-400">
+                          {p.brand_name || 'Generic'} • {defaultVariant?.color || 'M'}
+                        </p>
                       </div>
-                      <div className="mt-3 flex items-center justify-between w-full">
-                        <span className="text-xs font-black text-emerald-400">{p.suggested_selling_price} EGP</span>
-                        <span className="w-5 h-5 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-xs font-bold group-hover:bg-amber-400 group-hover:text-zinc-950 transition">
-                          +
+
+                      <div className="mt-4 pt-2 border-t border-zinc-800/80 flex items-center justify-between">
+                        <span className="font-mono font-bold text-amber-400 text-xs">
+                          {formatCurrency(p.suggested_selling_price)}
                         </span>
+                        {canAddSale && (
+                          <button
+                            onClick={() => addToCart(p)}
+                            disabled={isOutOfStock}
+                            className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-[10px] font-bold transition disabled:opacity-30 disabled:hover:bg-amber-500/10"
+                          >
+                            {isOutOfStock ? 'Out' : '+ Add'}
+                          </button>
+                        )}
                       </div>
-                    </button>
+                    </div>
                   )
                 })}
               </div>
             </div>
-          </div>
 
-          {/* Right Col: POS Cart & Checkout */}
-          <div className="space-y-4">
-            <div className="p-5 rounded-2xl bg-[#0c0c10] border border-[#1e1e26] space-y-5">
-              <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
-                <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Receipt className="w-4 h-4 text-amber-400" />
-                  <span>{t('cart')}</span>
-                </h2>
-                <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 rounded-full text-[10px] font-bold">
-                  {cart.length} items
-                </span>
-              </div>
-
-              {error && (
-                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{error}</span>
+            {/* Cart & Checkout Panel (1 Col) */}
+            <div className="p-5 rounded-2xl bg-[#0c0c10] border border-[#1e1e26] flex flex-col justify-between space-y-4">
+              <div>
+                <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+                  <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    <ShoppingCart className="w-4 h-4 text-amber-400" />
+                    <span>{t('cart')}</span>
+                  </h2>
+                  <span className="text-xs font-mono text-zinc-400">
+                    {cart.reduce((a, b) => a + b.quantity, 0)} {language === 'ar' ? 'قطع' : 'items'}
+                  </span>
                 </div>
-              )}
 
-              {/* Cart Line Items */}
-              <div className="space-y-2.5 max-h-60 overflow-y-auto">
-                {cart.length === 0 ? (
-                  <div className="py-8 text-center text-zinc-500 text-xs">
-                    {language === 'ar' ? 'السلة فارغة، انقر على منتج لإضافته' : 'Cart is empty. Click a product to add.'}
-                  </div>
-                ) : (
-                  cart.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between gap-3 text-xs"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <span className="font-semibold text-white truncate block">{item.name}</span>
-                        <span className="text-[10px] text-zinc-400 font-mono">{item.sku}</span>
-                        <div className="text-[11px] text-amber-400 font-bold mt-0.5">
-                          {formatCurrency(item.price)}
+                {/* Cart Items List */}
+                <div className="space-y-2 max-h-64 overflow-y-auto py-3">
+                  {cart.length === 0 ? (
+                    <div className="text-center py-8 text-zinc-500 text-xs">
+                      {language === 'ar'
+                        ? 'السلة فارغة. امسح الباركود أو اختر منتجاً.'
+                        : 'Cart is empty. Scan barcode or click + Add.'}
+                    </div>
+                  ) : (
+                    cart.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <span className="font-semibold text-white truncate block">{item.name}</span>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] text-zinc-400 font-mono">{item.sku}</span>
+                            {(item.color || item.size) && (
+                              <span className="text-[9px] text-amber-400/80">
+                                {item.color} / {item.size}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-amber-400 font-bold mt-0.5">
+                            {formatCurrency(item.price)}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          {canPrintBarcode && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenLabelModal(item)}
+                              title={language === 'ar' ? 'طباعة باركود' : 'Print Barcode'}
+                              className="p-1 text-zinc-500 hover:text-amber-400"
+                            >
+                              <Tag className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => updateCartQty(idx, -1)}
+                            className="w-6 h-6 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 flex items-center justify-center font-bold"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="w-6 text-center font-bold text-white text-xs">{item.quantity}</span>
+                          <button
+                            onClick={() => updateCartQty(idx, 1)}
+                            className="w-6 h-6 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 flex items-center justify-center font-bold"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => removeFromCart(idx)}
+                            className="w-6 h-6 text-zinc-500 hover:text-red-400 flex items-center justify-center ms-1"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
                         </div>
                       </div>
+                    ))
+                  )}
+                </div>
 
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => updateCartQty(idx, -1)}
-                          className="w-6 h-6 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 flex items-center justify-center font-bold"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <span className="w-6 text-center font-bold text-white text-xs">{item.quantity}</span>
-                        <button
-                          onClick={() => updateCartQty(idx, 1)}
-                          className="w-6 h-6 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 flex items-center justify-center font-bold"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={() => removeFromCart(idx)}
-                          className="w-6 h-6 text-zinc-500 hover:text-red-400 flex items-center justify-center ms-1"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
+                {/* Customer Selector */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-zinc-400 mb-1">{t('customer')}</label>
+                  <select
+                    value={selectedCustomer}
+                    onChange={(e) => setSelectedCustomer(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="">{language === 'ar' ? 'عميل نقدي (عام)' : 'Walk-in Cash Customer'}</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.phone ? `(${c.phone})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              {/* Customer Selector */}
-              <div>
-                <label className="block text-[11px] font-semibold text-zinc-400 mb-1">{t('customer')}</label>
-                <select
-                  value={selectedCustomer}
-                  onChange={(e) => setSelectedCustomer(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                {/* Payment Method Selector */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-zinc-400 mb-1">{t('paymentMethod')}</label>
+                  <select
+                    value={selectedPaymentMethod}
+                    onChange={(e) => setSelectedPaymentMethod(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                  >
+                    {paymentMethods.map((pm) => (
+                      <option key={pm.id} value={pm.id}>
+                        {pm.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Subtotal & Totals */}
+                <div className="space-y-1.5 text-xs pt-2 border-t border-zinc-800">
+                  <div className="flex justify-between text-zinc-400">
+                    <span>{t('subtotal')}</span>
+                    <span>{formatCurrency(subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-zinc-400">
+                    <span className="flex items-center gap-1">
+                      <span>{t('discount')} (EGP)</span>
+                      {!canApplyDiscount && <Lock className="w-3 h-3 text-zinc-500" />}
+                    </span>
+                    <input
+                      type="number"
+                      disabled={!canApplyDiscount}
+                      value={transactionDiscount}
+                      onChange={(e) => setTransactionDiscount(Number(e.target.value))}
+                      min={0}
+                      className="w-20 px-2 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-end text-xs text-amber-400 font-bold disabled:opacity-50"
+                    />
+                  </div>
+                  <div className="flex justify-between text-base font-black text-white pt-2 border-t border-zinc-800">
+                    <span>{t('finalTotal')}</span>
+                    <span className="text-amber-400">{formatCurrency(finalTotal)}</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleCheckout}
+                  disabled={cart.length === 0 || completing || !canAddSale}
+                  className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 font-black rounded-xl text-xs sm:text-sm transition shadow-lg shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  <option value="">{language === 'ar' ? 'عميل نقدي (عام)' : 'Walk-in Cash Customer'}</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} {c.phone ? `(${c.phone})` : ''}
-                    </option>
-                  ))}
-                </select>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{completing ? t('loading') : `${t('completeSale')} [F9]`}</span>
+                </button>
               </div>
-
-              {/* Payment Method Selector */}
-              <div>
-                <label className="block text-[11px] font-semibold text-zinc-400 mb-1">{t('paymentMethod')}</label>
-                <select
-                  value={selectedPaymentMethod}
-                  onChange={(e) => setSelectedPaymentMethod(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
-                >
-                  {paymentMethods.map((pm) => (
-                    <option key={pm.id} value={pm.id}>
-                      {pm.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Subtotal & Totals */}
-              <div className="space-y-1.5 text-xs pt-2 border-t border-zinc-800">
-                <div className="flex justify-between text-zinc-400">
-                  <span>{t('subtotal')}</span>
-                  <span>{formatCurrency(subtotal)}</span>
-                </div>
-                <div className="flex justify-between items-center text-zinc-400">
-                  <span>{t('discount')} (EGP)</span>
-                  <input
-                    type="number"
-                    value={transactionDiscount}
-                    onChange={(e) => setTransactionDiscount(Number(e.target.value))}
-                    min={0}
-                    className="w-20 px-2 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-end text-xs text-amber-400 font-bold"
-                  />
-                </div>
-                <div className="flex justify-between text-base font-black text-white pt-2 border-t border-zinc-800">
-                  <span>{t('finalTotal')}</span>
-                  <span className="text-amber-400">{formatCurrency(finalTotal)}</span>
-                </div>
-              </div>
-
-              <button
-                onClick={handleCheckout}
-                disabled={cart.length === 0 || completing}
-                className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 font-black rounded-xl text-xs sm:text-sm transition shadow-lg shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>{completing ? t('loading') : t('completeSale')}</span>
-              </button>
             </div>
           </div>
         </div>
       ) : (
         /* History Tab */
-        <div className="rounded-2xl bg-[#0c0c10] border border-[#1e1e26] overflow-hidden">
-          <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-white">{t('salesHistory')}</h2>
-            <a
-              href="/api/sales/transactions/export_csv/"
-              download
-              className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs font-semibold text-zinc-300 flex items-center gap-1.5 transition"
-            >
-              <Download className="w-3.5 h-3.5 text-amber-400" />
-              <span>{t('exportCsv')}</span>
-            </a>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-start">
-              <thead>
-                <tr className="border-b border-zinc-800 bg-zinc-950/50 text-zinc-400">
-                  <th className="p-4 text-start"># ID</th>
-                  <th className="p-4 text-start">{t('customer')}</th>
-                  <th className="p-4 text-start">{t('paymentMethod')}</th>
-                  <th className="p-4 text-end">{t('finalTotal')}</th>
-                  <th className="p-4 text-end">{t('date')}</th>
-                  <th className="p-4 text-end">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800/40">
-                {transactions.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="p-8 text-center text-zinc-500">
-                      {t('noData')}
-                    </td>
-                  </tr>
-                ) : (
-                  transactions.map((tx) => (
-                    <tr key={tx.id} className="hover:bg-zinc-900/30">
-                      <td className="p-4 font-mono font-bold text-amber-400">
-                        {tx.invoice_number || `#${tx.id}`}
-                      </td>
-                      <td className="p-4 font-semibold text-white">{tx.customer_name || 'Walk-in Customer'}</td>
-                      <td className="p-4 text-zinc-400">{tx.payment_method_name || 'Cash'}</td>
-                      <td className="p-4 text-end font-bold text-emerald-400">
-                        {formatCurrency(tx.final_amount)}
-                      </td>
-                      <td className="p-4 text-end text-zinc-500">
-                        {new Date(tx.transaction_date).toLocaleString()}
-                      </td>
-                      <td className="p-4 text-end">
-                        <button
-                          onClick={() => setInvoiceModalTx(tx)}
-                          className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-[11px] font-semibold transition inline-flex items-center gap-1"
-                        >
-                          <Printer className="w-3 h-3" />
-                          <span>{language === 'ar' ? 'طباعة' : 'Print'}</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Printable Invoice / Thermal Receipt Modal */}
-      {invoiceModalTx && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="w-full max-w-md bg-white text-zinc-950 rounded-2xl p-6 shadow-2xl my-8 relative print:m-0 print:p-4 print:w-full print:max-w-none print:shadow-none">
-            {/* Modal Controls (Hidden in Print) */}
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-200 mb-4 print:hidden">
-              <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
-                {language === 'ar' ? 'معاينة الفاتورة للطباعة' : 'Printable Invoice Preview'}
-              </span>
-              <button
-                onClick={() => setInvoiceModalTx(null)}
-                className="text-zinc-400 hover:text-zinc-700 p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
+        canViewSales && (
+          <div className="rounded-2xl bg-[#0c0c10] border border-[#1e1e26] overflow-hidden">
+            <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-white">{t('salesHistory')}</h2>
+              {canExportCsv && (
+                <a
+                  href="/api/sales/transactions/export_csv/"
+                  download
+                  className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs font-semibold text-zinc-300 flex items-center gap-1.5 transition"
+                >
+                  <Download className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{t('exportCsv')}</span>
+                </a>
+              )}
             </div>
 
-            {/* Printable Receipt Body */}
-            <div id="printable-receipt" className="text-center font-mono text-xs text-zinc-900 space-y-4">
-              {/* Store Header */}
-              <div className="border-b border-dashed border-zinc-300 pb-3">
-                <h2 className="text-base font-black tracking-wider uppercase text-zinc-950">
-                  {currentUser?.company_name || 'La Boutique Deluxe'}
-                </h2>
-                <p className="text-[11px] text-zinc-600 font-semibold mt-0.5">Funnel Luxury Fashion ERP</p>
-                <p className="text-[10px] text-zinc-500">Tax Reg: 482-910-384 | CR: 104928</p>
-                <p className="text-[10px] text-zinc-500">Tel: +20 (02) 2794-8800</p>
-              </div>
-
-              {/* Transaction Metadata */}
-              <div className="text-start space-y-1 text-[11px] border-b border-dashed border-zinc-300 pb-3">
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Invoice No:</span>
-                  <span className="font-bold text-zinc-950">{invoiceModalTx.invoice_number || `#${invoiceModalTx.id}`}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Date & Time:</span>
-                  <span>{new Date(invoiceModalTx.transaction_date || invoiceModalTx.created_at).toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Cashier:</span>
-                  <span>{currentUser?.first_name || currentUser?.username || 'Staff'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Customer:</span>
-                  <span className="font-semibold">{invoiceModalTx.customer_name || 'Walk-in Customer'}</span>
-                </div>
-              </div>
-
-              {/* Items List */}
-              <div className="border-b border-dashed border-zinc-300 pb-3">
-                <table className="w-full text-start text-[11px]">
-                  <thead>
-                    <tr className="border-b border-zinc-300 text-zinc-600 font-bold">
-                      <th className="py-1 text-start">Item</th>
-                      <th className="py-1 text-center">Qty</th>
-                      <th className="py-1 text-end">Price</th>
-                      <th className="py-1 text-end">Total</th>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-start">
+                <thead>
+                  <tr className="border-b border-zinc-800 bg-zinc-950/50 text-zinc-400">
+                    <th className="p-4 text-start"># ID</th>
+                    <th className="p-4 text-start">{t('customer')}</th>
+                    <th className="p-4 text-start">{t('paymentMethod')}</th>
+                    <th className="p-4 text-end">{t('finalTotal')}</th>
+                    <th className="p-4 text-end">{t('date')}</th>
+                    <th className="p-4 text-end">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/40">
+                  {transactions.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-zinc-500">
+                        {loading ? t('loading') : t('noData')}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-200">
-                    {invoiceModalTx.items && invoiceModalTx.items.length > 0 ? (
-                      invoiceModalTx.items.map((item: any, idx: number) => (
-                        <tr key={idx}>
-                          <td className="py-1 font-semibold text-zinc-950">
-                            {item.product_name || item.product?.model_name || `Item #${item.variant || item.product || idx + 1}`}
-                          </td>
-                          <td className="py-1 text-center">{item.quantity_sold}</td>
-                          <td className="py-1 text-end">{Number(item.unit_price).toFixed(2)}</td>
-                          <td className="py-1 text-end font-bold">{Number(item.item_total_after_tax || (item.unit_price * item.quantity_sold)).toFixed(2)}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={4} className="py-1 text-center text-zinc-500">
-                          Total items: {cart.length || 1}
+                  ) : (
+                    transactions.map((tx) => (
+                      <tr key={tx.id} className="hover:bg-zinc-900/30">
+                        <td className="p-4 font-mono font-bold text-amber-400">#{tx.id}</td>
+                        <td className="p-4 text-white font-semibold">{tx.customer_name || 'Walk-in Customer'}</td>
+                        <td className="p-4 text-zinc-400">{tx.payment_method_name}</td>
+                        <td className="p-4 text-end font-bold text-white">{formatCurrency(tx.final_total || tx.final_amount || 0)}</td>
+                        <td className="p-4 text-end text-zinc-500 font-mono">
+                          {new Date(tx.created_at || tx.transaction_date || Date.now()).toLocaleString()}
+                        </td>
+                        <td className="p-4 text-end">
+                          <button
+                            onClick={() => setInvoiceModalTx(tx)}
+                            className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-semibold"
+                          >
+                            Invoice
+                          </button>
                         </td>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      )}
 
-              {/* Financial Totals */}
-              <div className="text-start space-y-1 text-[11px] border-b border-dashed border-zinc-300 pb-3">
-                <div className="flex justify-between">
-                  <span className="text-zinc-600">Subtotal:</span>
-                  <span>{formatCurrency(invoiceModalTx.total_amount_before_tax || invoiceModalTx.final_amount)}</span>
-                </div>
-                {Number(invoiceModalTx.discount_amount) > 0 && (
-                  <div className="flex justify-between text-red-600">
-                    <span>Discount:</span>
-                    <span>-{formatCurrency(invoiceModalTx.discount_amount)}</span>
-                  </div>
-                )}
-                {Number(invoiceModalTx.total_tax) > 0 && (
-                  <div className="flex justify-between text-zinc-600">
-                    <span>VAT (Tax):</span>
-                    <span>+{formatCurrency(invoiceModalTx.total_tax)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-sm font-black text-zinc-950 pt-1.5 border-t border-zinc-400">
-                  <span>TOTAL PAID:</span>
-                  <span>{formatCurrency(invoiceModalTx.final_amount)}</span>
-                </div>
-                <div className="flex justify-between text-[10px] text-zinc-500 pt-1">
-                  <span>Payment Method:</span>
-                  <span className="font-semibold uppercase">{invoiceModalTx.payment_method_name || 'Cash'}</span>
-                </div>
-              </div>
+      {/* Barcode Label Modal */}
+      {canPrintBarcode && (
+        <BarcodeLabelModal
+          isOpen={isLabelModalOpen}
+          onClose={() => setIsLabelModalOpen(false)}
+          product={labelModalProduct}
+        />
+      )}
 
-              {/* Footer Policy & Barcode */}
-              <div className="pt-1 text-center space-y-1 text-[10px] text-zinc-500">
-                <p className="font-semibold text-zinc-700">Thank you for visiting {currentUser?.company_name || 'La Boutique Deluxe'}!</p>
-                <p>Exchange & Return within 14 days with original receipt and tags attached.</p>
-                <div className="pt-2 flex justify-center">
-                  <div className="px-4 py-1.5 bg-zinc-100 border border-zinc-300 rounded text-[9px] font-mono tracking-widest text-zinc-800">
-                    * {invoiceModalTx.invoice_number || `TX-${invoiceModalTx.id}`} *
+      {/* Invoice Modal */}
+      {invoiceModalTx && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-lg bg-[#0c0c10] border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-amber-400" />
+                <span>Sales Invoice #{invoiceModalTx.id}</span>
+              </h2>
+              <button
+                onClick={() => setInvoiceModalTx(null)}
+                className="text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-zinc-950 rounded-xl space-y-3 font-mono text-xs">
+              <div className="flex justify-between text-zinc-400">
+                <span>Date:</span>
+                <span>{new Date(invoiceModalTx.created_at).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-zinc-400">
+                <span>Customer:</span>
+                <span className="text-white">{invoiceModalTx.customer_name || 'Walk-in'}</span>
+              </div>
+              <div className="flex justify-between text-zinc-400">
+                <span>Cashier:</span>
+                <span className="text-white">{invoiceModalTx.created_by_name || 'Staff'}</span>
+              </div>
+              <div className="border-t border-zinc-800 pt-2 space-y-1">
+                {invoiceModalTx.lines?.map((l: any, i: number) => (
+                  <div key={i} className="flex justify-between text-zinc-300">
+                    <span>
+                      {l.quantity}x {l.product_name} ({l.variant_sku})
+                    </span>
+                    <span>{formatCurrency(l.line_total)}</span>
                   </div>
-                </div>
+                ))}
+              </div>
+              <div className="border-t border-zinc-800 pt-2 flex justify-between font-bold text-sm text-amber-400">
+                <span>Total Paid:</span>
+                <span>{formatCurrency(invoiceModalTx.final_total)}</span>
               </div>
             </div>
 
-            {/* Action Buttons (Hidden in Print) */}
-            <div className="flex items-center gap-3 pt-5 border-t border-zinc-200 mt-4 print:hidden">
-              <button
-                onClick={() => setInvoiceModalTx(null)}
-                className="flex-1 py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-bold rounded-xl text-xs transition"
-              >
-                {language === 'ar' ? 'إغلاق وعملية جديدة' : 'Close & New Sale'}
-              </button>
+            <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={handlePrintReceipt}
-                className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20"
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl text-xs flex items-center gap-1.5"
               >
                 <Printer className="w-4 h-4" />
-                <span>{language === 'ar' ? 'طباعة الفاتورة' : 'Print Invoice'}</span>
+                <span>{t('printReceipt')}</span>
               </button>
             </div>
           </div>
