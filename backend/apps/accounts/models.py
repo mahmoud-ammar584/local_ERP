@@ -36,7 +36,9 @@ class Profile(models.Model):
         Check if profile has specific action permission for a module.
         Supports both direct action names and hierarchical fallback.
         """
-        if self.role in ['owner', 'admin']:
+        # Only the Tenant Owner has unconditional, immutable full access.
+        # Store Admins and all other roles strictly follow their granular permissions matrix.
+        if self.role == 'owner':
             return True
         if not self.permissions or not isinstance(self.permissions, dict):
             return False

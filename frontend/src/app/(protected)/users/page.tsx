@@ -192,6 +192,21 @@ const ROLE_PRESETS: Record<string, { labelAr: string; labelEn: string; perms: Re
       audit: ['view'],
     },
   },
+  admin: {
+    labelAr: 'مدير متجر شامل (Store Admin)',
+    labelEn: 'Store Admin (Full)',
+    perms: {
+      dashboard: ['view'],
+      sales: ['view', 'add', 'apply_discount', 'export_csv'],
+      inventory: ['view', 'add', 'edit', 'delete', 'adjust_stock', 'print_barcode', 'stocktake_view', 'stocktake_count', 'stocktake_reconcile'],
+      purchases: ['view', 'add', 'edit', 'receive'],
+      customers: ['view', 'add', 'edit', 'delete'],
+      expenses: ['view', 'add', 'delete'],
+      settings: ['view', 'edit'],
+      users: ['view', 'add', 'edit', 'delete'],
+      audit: ['view'],
+    },
+  },
 }
 
 export default function UsersPage() {
@@ -523,15 +538,15 @@ export default function UsersPage() {
                       </span>
                     </td>
                     <td className="p-4">
-                      {isOwner || isAdmin ? (
+                      {isOwner ? (
                         <span className="text-[11px] text-amber-400 font-semibold flex items-center gap-1">
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>{language === 'ar' ? 'وصول شامل وغير مقيد' : 'Full Access Across All Modules'}</span>
+                          <span>{language === 'ar' ? 'المالك (وصول شامل ودائم)' : 'Owner (Full Access)'}</span>
                         </span>
                       ) : (
                         <div className="flex items-center gap-1.5">
                           <span className="text-zinc-300 font-bold">{permCount}</span>
-                          <span className="text-zinc-500">{language === 'ar' ? 'صلاحية دقيقة' : 'granular rules'}</span>
+                          <span className="text-zinc-500">{language === 'ar' ? 'صلاحية محددة' : 'assigned permissions'}</span>
                         </div>
                       )}
                     </td>
@@ -644,16 +659,19 @@ export default function UsersPage() {
                 </select>
               </div>
 
-              {/* Permissions Matrix */}
-              {editRole !== 'admin' && editRole !== 'owner' ? (
+              {/* Permissions Matrix - Enabled for all roles except Owner */}
+              {editRole !== 'owner' ? (
                 <div className="pt-3 border-t border-zinc-800">
                   {renderPermissionsMatrix(editPermissions, setEditPermissions)}
                 </div>
               ) : (
-                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
-                  {editRole === 'owner'
-                    ? 'المالك يمتلك وصولاً كاملاً وغير مقيد لجميع شاشات وخدمات النظام.'
-                    : 'المدير يمتلك وصولاً كاملاً لجميع العمليات والبيانات افتراضياً.'}
+                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-center gap-2">
+                  <Shield className="w-4 h-4 shrink-0 text-amber-400" />
+                  <span>
+                    {language === 'ar'
+                      ? 'حساب المالك (Owner) يمتلك وصولاً كاملاً ودائماً لجميع وظائف النظام وقواعد البيانات تلقائياً.'
+                      : 'The Owner account has permanent, unconditional full access across all modules.'}
+                  </span>
                 </div>
               )}
 

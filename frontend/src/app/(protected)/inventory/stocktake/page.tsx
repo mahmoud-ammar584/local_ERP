@@ -9,6 +9,7 @@ import {
   scanStockAuditItem,
   setStockAuditItemCount,
   reconcileStockAudit,
+  cancelStockAudit,
   exportStockAuditCsvUrl,
   StockAudit,
   StockAuditItem,
@@ -39,6 +40,7 @@ import {
   Clock,
   Sparkles,
   Lock,
+  X,
 } from 'lucide-react'
 
 export default function StocktakePage() {
@@ -73,6 +75,8 @@ export default function StocktakePage() {
   const [newAuditTitle, setNewAuditTitle] = useState('')
   const [newAuditNotes, setNewAuditNotes] = useState('')
   const [isReconcileModalOpen, setIsReconcileModalOpen] = useState(false)
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
 
   // Label Print Modal State
   const [labelProduct, setLabelProduct] = useState<LabelProductData | null>(null)
@@ -271,6 +275,28 @@ export default function StocktakePage() {
     }
   }
 
+  // Cancel Stocktake Session Handler
+  const handleCancelAudit = async () => {
+    if (!activeAudit) return
+    if (!canReconcile && !canCreate) {
+      alert(language === 'ar' ? 'ليس لديك صلاحية لإلغاء جلسة الجرد' : 'You do not have permission to cancel stocktake')
+      return
+    }
+    setActionLoading(true)
+    try {
+      const cancelled = await cancelStockAudit(activeAudit.id, cancelReason)
+      setActiveAudit(cancelled)
+      setIsCancelModalOpen(false)
+      setCancelReason('')
+      if (soundFx) soundFx.playScanWarning()
+      await loadAudits()
+    } catch (err: any) {
+      alert(err.message || 'Failed to cancel stocktake')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   // Open Barcode Label Modal for an item
   const handlePrintLabel = (item: StockAuditItem) => {
     if (!canPrintBarcode) {
@@ -399,11 +425,15 @@ export default function StocktakePage() {
                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                     activeAudit.status === 'completed'
                       ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                      : activeAudit.status === 'cancelled'
+                      ? 'bg-red-500/10 text-red-400 border-red-500/30'
                       : 'bg-amber-500/10 text-amber-400 border-amber-500/30 animate-pulse'
                   }`}
                 >
                   {activeAudit.status === 'completed'
                     ? language === 'ar' ? 'مكتمل ومُعتمد' : 'Completed'
+                    : activeAudit.status === 'cancelled'
+                    ? language === 'ar' ? 'ملغي' : 'Cancelled'
                     : language === 'ar' ? 'جاري الجرد بالماسح' : 'In Progress'}
                 </span>
               )}
@@ -680,31 +710,42 @@ export default function StocktakePage() {
               </div>
             </div>
 
-            {/* Reconciliation Action Button */}
+            {/* Reconciliation and Cancellation Action Buttons */}
             {activeAudit.status === 'in_progress' && (
               <div className="pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <p className="text-[11px] text-zinc-400">
                   {language === 'ar'
-                    ? 'عند الانتهاء من المسح، اضغط الزر لاعتماد الفروقات وتحديث الأرصدة الفعلية في قاعدة البيانات.'
-                    : 'Once physical counting is complete, reconcile to atomically update current inventory.'}
+                    ? 'عند الانتهاء من المسح، يمكنك اعتماد الفروقات لتحديث المخزون الفعلي، أو إلغاء الجلسة بالكامل.'
+                    : 'Reconcile counted quantities to update stock, or cancel the session safely.'}
                 </p>
-                {canReconcile ? (
-                  <button
-                    onClick={() => setIsReconcileModalOpen(true)}
-                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-zinc-950 font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition shrink-0"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>{t('reconcileStock')}</span>
-                  </button>
-                ) : (
-                  <div
-                    title={language === 'ar' ? 'يتطلب صلاحية اعتماد وتسوية الجرد (مدير المتجر)' : 'Requires Manager Reconciliation Permission'}
-                    className="px-4 py-2 bg-zinc-900 border border-zinc-800 text-zinc-500 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-not-allowed"
-                  >
-                    <Lock className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{language === 'ar' ? 'اعتماد الجرد (صلاحية إدارة)' : 'Reconcile (Manager Only)'}</span>
-                  </div>
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  {(canReconcile || canCreate) && (
+                    <button
+                      onClick={() => setIsCancelModalOpen(true)}
+                      className="px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 hover:border-red-500/50 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition"
+                    >
+                      <X className="w-4 h-4" />
+                      <span>{language === 'ar' ? 'إلغاء الجلسة' : 'Cancel Session'}</span>
+                    </button>
+                  )}
+                  {canReconcile ? (
+                    <button
+                      onClick={() => setIsReconcileModalOpen(true)}
+                      className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-zinc-950 font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>{t('reconcileStock')}</span>
+                    </button>
+                  ) : (
+                    <div
+                      title={language === 'ar' ? 'يتطلب صلاحية اعتماد وتسوية الجرد (مدير المتجر)' : 'Requires Manager Reconciliation Permission'}
+                      className="px-4 py-2 bg-zinc-900 border border-zinc-800 text-zinc-500 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-not-allowed"
+                    >
+                      <Lock className="w-3.5 h-3.5 text-amber-400" />
+                      <span>{language === 'ar' ? 'اعتماد الجرد (صلاحية إدارة)' : 'Reconcile (Manager Only)'}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1028,6 +1069,59 @@ export default function StocktakePage() {
                 className="flex-1 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-400 text-zinc-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-500/20"
               >
                 {actionLoading ? t('loading') : (language === 'ar' ? 'تطبيق التحديثات فوراً' : 'Apply Updates')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Cancel Stocktake Session Confirmation */}
+      {isCancelModalOpen && activeAudit && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-[#0c0c10] border border-red-500/30 rounded-2xl p-6 shadow-2xl space-y-5">
+            <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center mx-auto">
+              <X className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-2">
+              <h2 className="text-base font-bold text-white">
+                {language === 'ar' ? 'تأكيد إلغاء جلسة الجرد' : 'Confirm Stocktake Cancellation'}
+              </h2>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                {language === 'ar'
+                  ? 'هل أنت متأكد من رغبتك في إلغاء جلسة الجرد الحالية؟ سيتم حفظ حالة الجلسة كـ (ملغية) ولن يتم تطبيق أي تعديلات على أرصدة المخزون الفعلية.'
+                  : 'Are you sure you want to cancel this stocktake session? The audit will be marked as Cancelled and no inventory changes will be applied.'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
+                {language === 'ar' ? 'سبب الإلغاء (اختياري):' : 'Cancellation Reason (Optional):'}
+              </label>
+              <input
+                type="text"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder={language === 'ar' ? 'مثال: خطأ في المسح، إعادة الجرد لاحقاً...' : 'e.g. Scanning error, rescheduled...'}
+                className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-red-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsCancelModalOpen(false)}
+                className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-semibold rounded-xl"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelAudit}
+                disabled={actionLoading}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-red-500/20"
+              >
+                {actionLoading ? t('loading') : (language === 'ar' ? 'تأكيد الإلغاء' : 'Confirm Cancel')}
               </button>
             </div>
           </div>

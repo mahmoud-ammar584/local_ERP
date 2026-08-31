@@ -376,6 +376,12 @@ export const reconcileStockAudit = (auditId: number) =>
     method: 'POST',
   })
 
+export const cancelStockAudit = (auditId: number, reason?: string) =>
+  fetchJson<StockAudit>(`/api/inventory/stock-audits/${auditId}/cancel/`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  })
+
 export const exportStockAuditCsvUrl = (auditId: number) =>
   `/api/inventory/stock-audits/${auditId}/export-csv/`
 

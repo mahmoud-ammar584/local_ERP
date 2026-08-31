@@ -50,7 +50,9 @@ export function isAuthenticated(): boolean {
 export function hasPermission(module: string, action: string): boolean {
   const user = getUser()
   if (!user) return false
-  if (user.role === 'owner' || user.role === 'admin') return true
+  // Only the tenant Owner has permanent, unconditional full access.
+  // Store Admins and all other roles strictly follow their granular permissions matrix.
+  if (user.role === 'owner') return true
   const perms = user.permissions || {}
   const modulePerms = perms[module] || []
   if (!Array.isArray(modulePerms)) return false
@@ -69,7 +71,7 @@ export function hasPermission(module: string, action: string): boolean {
 export function getDefaultRoute(): string {
   const user = getUser()
   if (!user) return '/login'
-  if (user.role === 'owner' || user.role === 'admin' || hasPermission('dashboard', 'view')) {
+  if (user.role === 'owner' || hasPermission('dashboard', 'view')) {
     return '/dashboard'
   }
   if (hasPermission('sales', 'view')) return '/sales'

@@ -46,8 +46,9 @@ class HasModulePermission(permissions.BasePermission):
         if not profile or not profile.company_id:
             return False
 
-        # Company owner and admins have full access across all modules/actions
-        if profile.role in ['owner', 'admin']:
+        # Only Company Owner has immutable, unconditional full access across all modules/actions.
+        # Admins, Cashiers, and all other users strictly follow their assigned granular permissions.
+        if profile.role == 'owner':
             return True
 
         # Common master / lookup tables: allow read-only (GET) to all authenticated company members
@@ -79,14 +80,14 @@ class HasModulePermission(permissions.BasePermission):
 
         # Granular Stocktake checks
         if view_name == 'StockAuditViewSet':
-            if action == 'reconcile':
-                return profile.has_permission('inventory', 'stocktake_reconcile')
+            if action in ['reconcile', 'cancel']:
+                return profile.has_permission('inventory', 'stocktake_reconcile') or profile.has_permission('inventory', 'edit')
             elif action in ['scan', 'set_item_count']:
                 return profile.has_permission('inventory', 'stocktake_count')
             elif action == 'create':
-                return profile.has_permission('inventory', 'stocktake_create')
+                return profile.has_permission('inventory', 'stocktake_create') or profile.has_permission('inventory', 'add')
             elif action in ['list', 'retrieve', 'export_csv']:
-                return profile.has_permission('inventory', 'stocktake_view')
+                return profile.has_permission('inventory', 'stocktake_view') or profile.has_permission('inventory', 'view')
 
         # Product lookup (Used by POS cashier and Stocktake)
         if action == 'lookup':

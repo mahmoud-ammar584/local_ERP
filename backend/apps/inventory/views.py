@@ -20,6 +20,7 @@ from .serializers import (
 )
 
 from apps.core.mixins import TenantScopedViewSetMixin, AuditLogMixin
+from apps.core.models import UserActivity
 from apps.core.utils import log_activity
 from apps.accounts.permissions import HasModulePermission
 from rest_framework.permissions import IsAuthenticated
@@ -287,16 +288,46 @@ class StockAuditViewSet(AuditLogMixin, TenantScopedViewSetMixin, viewsets.ModelV
                     user=request.user,
                     action='reconcile',
                     model_name='StockAudit',
-                    object_id=str(audit.id),
+                    object_id=audit.id,
                     ip_address=request.META.get('REMOTE_ADDR'),
-                    user_agent=request.META.get('HTTP_USER_AGENT', ''),
                     details={
                         'title': audit.title,
                         'total_counted': audit.total_counted_items,
                         'total_variance': audit.total_variance_items,
-                        'variance_cost': str(audit.total_variance_cost)
+                        'variance_cost': str(audit.total_variance_cost),
+                        'user_agent': request.META.get('HTTP_USER_AGENT', ''),
                     }
                 )
+
+        return response.Response(StockAuditDetailSerializer(audit).data)
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """
+        Cancel an active stock audit session without applying any stock changes.
+        """
+        audit = self.get_object()
+        if audit.status == 'completed':
+            return response.Response({'error': 'Cannot cancel an already completed and reconciled stocktake'}, status=400)
+
+        audit.status = 'cancelled'
+        audit.save(update_fields=['status'])
+
+        # Log to UserActivity
+        if request.user and request.user.is_authenticated:
+            UserActivity.objects.create(
+                company=audit.company,
+                user=request.user,
+                action='cancel',
+                model_name='StockAudit',
+                object_id=audit.id,
+                ip_address=request.META.get('REMOTE_ADDR'),
+                details={
+                    'title': audit.title,
+                    'reason': request.data.get('reason', 'Cancelled by user'),
+                    'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+                }
+            )
 
         return response.Response(StockAuditDetailSerializer(audit).data)
 
