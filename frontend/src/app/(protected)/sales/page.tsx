@@ -380,7 +380,7 @@ export default function SalesPage() {
     }
 
     const payload = {
-      customer: selectedCustomer ? Number(selectedCustomer) : undefined,
+      customer: selectedCustomer && selectedCustomer !== '0' ? Number(selectedCustomer) : undefined,
       payment_method: chosenMethodId,
       overall_discount_percentage: transactionDiscount || 0,
       items: cart.map((item) => ({
@@ -388,12 +388,6 @@ export default function SalesPage() {
         quantity_sold: item.quantity,
         unit_price: item.price,
         item_discount_percentage: item.discount || 0,
-      })),
-      lines: cart.map((item) => ({
-        product_variant: item.variantId,
-        quantity: item.quantity,
-        unit_price: item.price,
-        discount_percentage: item.discount || 0,
       })),
     }
 

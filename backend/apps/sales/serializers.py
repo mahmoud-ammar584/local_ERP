@@ -141,8 +141,10 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
         profile = getattr(getattr(request, 'user', None), 'profile', None)
         company = getattr(profile, 'company', None)
 
-        # Support both 'items' and 'lines'
-        raw_items = data.pop('items', None) or data.pop('lines', None) or []
+        # Cleanly pop both 'items' and 'lines' so neither leaks into model create kwargs
+        items_payload = data.pop('items', None)
+        lines_payload = data.pop('lines', None)
+        raw_items = items_payload or lines_payload or []
         if not raw_items:
             raise serializers.ValidationError({'items': 'At least one item is required in the sale transaction.'})
 
@@ -209,7 +211,9 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        items_data = validated_data.pop('_normalized_items')
+        items_data = validated_data.pop('_normalized_items', [])
+        validated_data.pop('items', None)
+        validated_data.pop('lines', None)
         
         # Ensure company is attached
         request = self.context.get('request')
@@ -217,7 +221,11 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
         if profile and profile.company:
             validated_data['company'] = profile.company
 
-        transaction = SalesTransaction.objects.create(**validated_data)
+        # Only pass valid model fields
+        valid_model_fields = {'company', 'transaction_date', 'customer', 'payment_method', 'overall_discount_percentage', 'notes'}
+        create_kwargs = {k: v for k, v in validated_data.items() if k in valid_model_fields}
+
+        transaction = SalesTransaction.objects.create(**create_kwargs)
 
         for item_dict in items_data:
             SalesItem.objects.create(
