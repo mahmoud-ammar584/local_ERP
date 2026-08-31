@@ -23,6 +23,7 @@ import { soundFx } from '@/lib/sound'
 import { BarcodeDisplay } from '@/components/BarcodeDisplay'
 import { BarcodeLabelModal, LabelProductData } from '@/components/BarcodeLabelModal'
 import { ThermalReceiptModal } from '@/components/ThermalReceiptModal'
+import { ReturnModal } from '@/components/ReturnModal'
 import {
   ShoppingCart,
   Plus,
@@ -44,6 +45,7 @@ import {
   Lock,
   Volume2,
   VolumeX,
+  RotateCcw,
 } from 'lucide-react'
 
 interface CartItem {
@@ -104,6 +106,9 @@ export default function SalesPage() {
 
   // Thermal Receipt Modal State
   const [receiptTx, setReceiptTx] = useState<any | null>(null)
+
+  // Return & Refund Modal State
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
 
   async function loadInitialData() {
     setLoading(true)
@@ -441,6 +446,17 @@ export default function SalesPage() {
           >
             {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
+
+          {/* Return & Refund Button */}
+          {canAddSale && (
+            <button
+              onClick={() => setIsReturnModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-amber-500/40 text-amber-400 text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>{language === 'ar' ? 'استرجاع بمسح الباركود' : 'Return / Refund'}</span>
+            </button>
+          )}
 
           {canViewSales && (
             <div className="flex items-center p-1 rounded-xl bg-zinc-900 border border-zinc-800">
@@ -868,13 +884,24 @@ export default function SalesPage() {
                           {new Date(tx.created_at || tx.transaction_date || Date.now()).toLocaleString()}
                         </td>
                         <td className="p-4 text-end">
-                          <button
-                            onClick={() => setReceiptTx(tx)}
-                            className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-amber-400 rounded-xl text-xs font-semibold flex items-center gap-1 ms-auto transition"
-                          >
-                            <Receipt className="w-3.5 h-3.5" />
-                            <span>{language === 'ar' ? 'عرض الفاتورة' : 'Receipt'}</span>
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => setReceiptTx(tx)}
+                              className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-amber-400 rounded-xl text-xs font-semibold flex items-center gap-1 transition"
+                            >
+                              <Receipt className="w-3.5 h-3.5" />
+                              <span>{language === 'ar' ? 'عرض الفاتورة' : 'Receipt'}</span>
+                            </button>
+                            {canAddSale && (
+                              <button
+                                onClick={() => setIsReturnModalOpen(true)}
+                                className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-amber-400 rounded-xl text-xs font-semibold flex items-center gap-1 transition"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                <span>{language === 'ar' ? 'إرجاع' : 'Return'}</span>
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -901,6 +928,14 @@ export default function SalesPage() {
         onClose={() => setReceiptTx(null)}
         transaction={receiptTx}
         storeInfo={storeInfo}
+      />
+
+      {/* Sales Return & Refund Modal */}
+      <ReturnModal
+        isOpen={isReturnModalOpen}
+        onClose={() => setIsReturnModalOpen(false)}
+        transactions={transactions}
+        onReturnSuccess={loadInitialData}
       />
     </div>
   )

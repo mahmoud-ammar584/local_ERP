@@ -5,6 +5,7 @@ from .models import SalesTransaction, SalesItem, ReturnTransaction, ReturnItem
 from apps.customers.models import Customer
 from apps.settings_app.models import PaymentMethod, TaxRate
 from apps.inventory.models import Product, ProductVariant
+from django.db.models import Sum as DbSum
 from apps.core.utils import log_activity
 
 
@@ -222,8 +223,8 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
         # Update customer stats
         if transaction.customer:
             customer = transaction.customer
-            customer.total_purchases += transaction.final_amount
-            customer.total_profit += transaction.total_profit
+            customer.total_purchases = (customer.total_purchases or Decimal('0')) + (transaction.final_amount or Decimal('0'))
+            customer.total_profit = (customer.total_profit or Decimal('0')) + (transaction.total_profit or Decimal('0'))
             customer.last_purchase_date = transaction.transaction_date.date()
             customer.save()
 
@@ -237,3 +238,157 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
             )
 
         return transaction
+
+    def to_representation(self, instance):
+        return SalesTransactionSerializer(instance, context=self.context).data
+
+
+# --- Return Transaction Serializers ---
+
+class ReturnItemSerializer(serializers.ModelSerializer):
+    variant_sku = serializers.CharField(source='sales_item.variant.full_sku', read_only=True)
+    product_name = serializers.CharField(source='sales_item.variant.product.model_name', read_only=True)
+    brand_name = serializers.CharField(source='sales_item.variant.product.brand.name', read_only=True)
+    color = serializers.CharField(source='sales_item.variant.color', read_only=True)
+    size = serializers.CharField(source='sales_item.variant.size', read_only=True)
+    unit_price = serializers.DecimalField(source='sales_item.unit_price', max_digits=12, decimal_places=2, read_only=True)
+    refund_amount = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ReturnItem
+        fields = [
+            'id', 'return_transaction', 'sales_item',
+            'variant_sku', 'product_name', 'brand_name', 'color', 'size',
+            'unit_price', 'quantity_returned', 'refund_amount', 'reason'
+        ]
+        read_only_fields = ['return_transaction']
+
+    def get_refund_amount(self, obj):
+        return (obj.sales_item.unit_price * obj.quantity_returned) * (1 - (obj.sales_item.item_discount_percentage or Decimal('0')) / Decimal('100'))
+
+
+class ReturnTransactionSerializer(serializers.ModelSerializer):
+    items = ReturnItemSerializer(many=True, read_only=True)
+    customer_name = serializers.CharField(source='customer.name', read_only=True, default=None)
+    original_invoice_number = serializers.CharField(source='original_transaction.id', read_only=True)
+
+    class Meta:
+        model = ReturnTransaction
+        fields = [
+            'id', 'return_date', 'customer', 'customer_name',
+            'original_transaction', 'original_invoice_number',
+            'reason', 'total_refund_amount', 'items'
+        ]
+
+
+class ReturnTransactionCreateSerializer(serializers.ModelSerializer):
+    original_transaction_id = serializers.IntegerField(write_only=True)
+    reason = serializers.CharField(required=False, allow_blank=True)
+    items = serializers.ListField(child=serializers.DictField(), write_only=True)
+
+    class Meta:
+        model = ReturnTransaction
+        fields = ['id', 'original_transaction_id', 'reason', 'items']
+
+    def validate(self, data):
+        original_tx_id = data.get('original_transaction_id')
+        items_data = data.get('items', [])
+
+        try:
+            tx = SalesTransaction.objects.get(id=original_tx_id)
+        except SalesTransaction.DoesNotExist:
+            raise serializers.ValidationError({'original_transaction_id': f'Transaction #{original_tx_id} not found.'})
+
+        if not items_data:
+            raise serializers.ValidationError({'items': 'At least one item must be selected for return.'})
+
+        validated_items = []
+        total_refund = Decimal('0')
+
+        for item in items_data:
+            sales_item_id = item.get('sales_item_id') or item.get('sales_item')
+            qty_return = int(item.get('quantity_returned') or item.get('quantity') or 0)
+            item_reason = item.get('reason', '')
+
+            if qty_return <= 0:
+                continue
+
+            try:
+                sales_item = SalesItem.objects.get(id=sales_item_id, sales_transaction=tx)
+            except SalesItem.DoesNotExist:
+                raise serializers.ValidationError({'items': f'Sales item #{sales_item_id} not found in this transaction.'})
+
+            # Check max returnable
+            already_returned = (
+                ReturnItem.objects
+                .filter(sales_item=sales_item)
+                .aggregate(total=DbSum('quantity_returned'))['total'] or 0
+            )
+            max_returnable = sales_item.quantity_sold - already_returned
+            if qty_return > max_returnable:
+                raise serializers.ValidationError({
+                    'items': f"Cannot return {qty_return} units for {sales_item.variant.full_sku if sales_item.variant else 'item'}. Maximum returnable: {max_returnable}"
+                })
+
+            item_price = sales_item.unit_price * (1 - (sales_item.item_discount_percentage or Decimal('0')) / Decimal('100'))
+            refund_line = item_price * qty_return
+            total_refund += refund_line
+
+            validated_items.append({
+                'sales_item': sales_item,
+                'quantity_returned': qty_return,
+                'reason': item_reason,
+            })
+
+        if not validated_items:
+            raise serializers.ValidationError({'items': 'Please specify valid return quantities greater than 0.'})
+
+        data['_original_transaction'] = tx
+        data['_validated_items'] = validated_items
+        data['_total_refund'] = total_refund
+        return data
+
+    def create(self, validated_data):
+        from django.db import transaction
+
+        tx = validated_data['_original_transaction']
+        items = validated_data['_validated_items']
+        total_refund = validated_data['_total_refund']
+        reason = validated_data.get('reason', 'Customer return')
+
+        with transaction.atomic():
+            return_tx = ReturnTransaction.objects.create(
+                customer=tx.customer,
+                original_transaction=tx,
+                reason=reason,
+                total_refund_amount=total_refund
+            )
+
+            for item_info in items:
+                ReturnItem.objects.create(
+                    return_transaction=return_tx,
+                    sales_item=item_info['sales_item'],
+                    quantity_returned=item_info['quantity_returned'],
+                    reason=item_info['reason']
+                )
+
+            # Update customer statistics if applicable
+            if tx.customer:
+                tx.customer.total_purchases = max(Decimal('0'), tx.customer.total_purchases - total_refund)
+                tx.customer.save(update_fields=['total_purchases'])
+
+            request = self.context.get('request')
+            if request and request.user and request.user.is_authenticated:
+                log_activity(
+                    request.user,
+                    f"Created Return #{return_tx.id} for Sale #{tx.id}",
+                    "ReturnTransaction",
+                    return_tx.id,
+                    {"refund_amount": str(total_refund)}
+                )
+
+        return return_tx
+
+    def to_representation(self, instance):
+        return ReturnTransactionSerializer(instance, context=self.context).data
+

@@ -9,6 +9,7 @@ class Customer(models.Model):
     customer_type = models.ForeignKey(CustomerType, on_delete=models.PROTECT, related_name='customers')
     address = models.TextField(blank=True, null=True)
     preferred_brands = models.TextField(blank=True, null=True)
+    current_balance = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_purchases = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_profit = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     last_purchase_date = models.DateField(blank=True, null=True)

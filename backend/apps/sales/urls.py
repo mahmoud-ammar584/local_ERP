@@ -4,6 +4,7 @@ from . import views
 
 router = DefaultRouter()
 router.register('transactions', views.SalesTransactionViewSet)
+router.register('returns', views.ReturnTransactionViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

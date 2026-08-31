@@ -21,14 +21,15 @@ class SalesTransaction(models.Model):
 
     @property
     def total_profit(self):
-        return sum(item.profit_per_item * item.quantity_sold for item in self.items.all())
+        return sum((item.profit_per_item or Decimal('0')) * (item.quantity_sold or 1) for item in self.items.all())
 
     def recalculate(self):
         items = self.items.all()
-        self.total_amount_before_tax = sum(i.item_total_before_tax for i in items)
-        self.total_tax = sum(i.item_tax for i in items)
+        self.total_amount_before_tax = sum(i.item_total_before_tax for i in items) or Decimal('0')
+        self.total_tax = sum(i.item_tax for i in items) or Decimal('0')
         subtotal = self.total_amount_before_tax + self.total_tax
-        self.final_amount = subtotal * (1 - self.overall_discount_percentage / Decimal('100'))
+        discount_rate = self.overall_discount_percentage or Decimal('0')
+        self.final_amount = subtotal * (1 - discount_rate / Decimal('100'))
         self.save(update_fields=['total_amount_before_tax', 'total_tax', 'final_amount'])
 
     def __str__(self):
@@ -41,7 +42,7 @@ class SalesItem(models.Model):
     quantity_sold = models.IntegerField()
     unit_price = models.DecimalField(max_digits=12, decimal_places=2)
     item_discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
-    tax_rate = models.ForeignKey(TaxRate, on_delete=models.PROTECT)
+    tax_rate = models.ForeignKey(TaxRate, on_delete=models.SET_NULL, null=True, blank=True)
 
     def save(self, *args, **kwargs):
         is_new = self._state.adding
@@ -65,7 +66,9 @@ class SalesItem(models.Model):
 
     @property
     def item_tax(self):
-        return self.item_total_before_tax * self.tax_rate.rate
+        if self.tax_rate and hasattr(self.tax_rate, 'rate') and self.tax_rate.rate is not None:
+            return self.item_total_before_tax * Decimal(str(self.tax_rate.rate))
+        return Decimal('0')
 
     @property
     def item_total_after_tax(self):
@@ -73,11 +76,11 @@ class SalesItem(models.Model):
 
     @property
     def profit_per_item(self):
-        base = self.unit_price * (1 - self.item_discount_percentage / Decimal('100'))
-        if self.variant_id:
-            return base - self.variant.product.total_cost
-        if self.product_id:
-            return base - self.product.total_cost
+        base = (self.unit_price or Decimal('0')) * (1 - (self.item_discount_percentage or Decimal('0')) / Decimal('100'))
+        if self.variant_id and self.variant and self.variant.product:
+            return base - (self.variant.product.total_cost or Decimal('0'))
+        if self.product_id and self.product:
+            return base - (self.product.total_cost or Decimal('0'))
         return base
 
     def __str__(self):
@@ -97,7 +100,8 @@ class ReturnTransaction(models.Model):
     def __str__(self):
         return f"Return #{self.id} (Original Sale #{self.original_transaction.id})"
 
-from django.db.models import Sum
+from django.db.models import Sum as DbSum
+from django.core.exceptions import ValidationError
 
 class ReturnItem(models.Model):
     return_transaction = models.ForeignKey(ReturnTransaction, on_delete=models.CASCADE, related_name='items')

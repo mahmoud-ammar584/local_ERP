@@ -176,6 +176,32 @@ export interface SalesTransaction {
   items?: SalesItem[]
 }
 
+export interface ReturnItem {
+  id: number
+  sales_item: number
+  variant_sku?: string
+  product_name?: string
+  brand_name?: string
+  color?: string
+  size?: string
+  unit_price: number
+  quantity_returned: number
+  refund_amount: number
+  reason?: string
+}
+
+export interface ReturnTransaction {
+  id: number
+  return_date: string
+  customer?: number
+  customer_name?: string
+  original_transaction: number
+  original_invoice_number?: string
+  reason?: string
+  total_refund_amount: number
+  items?: ReturnItem[]
+}
+
 export interface PurchaseOrderItem {
   product: number
   variant?: number
@@ -363,6 +389,23 @@ export const createSalesTransaction = (data: Record<string, unknown>) =>
     body: JSON.stringify(data),
   })
 
+export const getReturns = (params = '') =>
+  fetchJson<ReturnTransaction[] | { results: ReturnTransaction[] }>(`/api/sales/returns/${params ? '?' + params : ''}`)
+
+export const createReturnTransaction = (data: {
+  original_transaction_id: number
+  reason?: string
+  items: Array<{
+    sales_item_id: number
+    quantity_returned: number
+    reason?: string
+  }>
+}) =>
+  fetchJson<ReturnTransaction>('/api/sales/returns/', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+
 // Purchases
 export const getPurchaseOrders = () =>
   fetchJson<PurchaseOrder[] | { results: PurchaseOrder[] }>('/api/purchases/orders/')
@@ -385,6 +428,22 @@ export const updateCustomer = (id: number, data: Partial<Customer>) =>
 
 export const deleteCustomer = (id: number) =>
   fetchJson(`/api/customers/${id}/`, { method: 'DELETE' })
+
+export const recordCustomerPayment = (
+  customerId: number,
+  data: { amount: number; notes?: string; payment_type?: string }
+) =>
+  fetchJson<any>(`/api/customers/${customerId}/record-payment/`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+
+export const getCustomerStatement = (customerId: number) =>
+  fetchJson<{
+    customer: Customer
+    sales: SalesTransaction[]
+    returns: ReturnTransaction[]
+  }>(`/api/customers/${customerId}/statement/`)
 
 // Expenses
 export const getExpenses = () =>

@@ -101,8 +101,14 @@ class HasModulePermission(permissions.BasePermission):
         if action == 'receive':
             return profile.has_permission('purchases', 'receive')
 
+        # Customer Ledger / Payment
+        if action == 'record_payment':
+            return profile.has_permission('customers', 'edit') or profile.has_permission('customers', 'add')
+        if action == 'statement':
+            return profile.has_permission('customers', 'view')
+
         # Generic Action Mapping
-        if action in ['list', 'retrieve', 'invoice']:
+        if action in ['list', 'retrieve', 'invoice', 'statement']:
             action_name = 'view'
         elif action in ['export_csv']:
             action_name = 'export_csv' if profile.has_permission(module, 'export_csv') else 'view'

@@ -5,8 +5,13 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .models import SalesTransaction
-from .serializers import SalesTransactionSerializer, SalesTransactionCreateSerializer
+from .models import SalesTransaction, ReturnTransaction
+from .serializers import (
+    SalesTransactionSerializer,
+    SalesTransactionCreateSerializer,
+    ReturnTransactionSerializer,
+    ReturnTransactionCreateSerializer,
+)
 from .utils import generate_invoice_pdf
 from apps.core.mixins import TenantScopedViewSetMixin, AuditLogMixin
 from apps.accounts.permissions import HasModulePermission
@@ -65,3 +70,24 @@ class SalesTransactionViewSet(TenantScopedViewSetMixin, AuditLogMixin, viewsets.
             as_attachment=True, 
             filename=f'invoice_{sale.id}.pdf'
         )
+
+
+class ReturnTransactionViewSet(TenantScopedViewSetMixin, AuditLogMixin, viewsets.ModelViewSet):
+    """
+    ViewSet for handling customer returns, exchanges, and automatic inventory restock.
+    """
+    module_name = 'sales'
+    queryset = ReturnTransaction.objects.select_related('customer', 'original_transaction').prefetch_related('items', 'items__sales_item', 'items__sales_item__variant').all()
+    permission_classes = [IsAuthenticated, HasModulePermission]
+    ordering = ['-return_date']
+
+    def get_queryset(self):
+        profile = getattr(getattr(self.request, 'user', None), 'profile', None)
+        if not profile or not profile.company_id:
+            return ReturnTransaction.objects.none()
+        return ReturnTransaction.objects.filter(original_transaction__company_id=profile.company_id).select_related('customer', 'original_transaction').prefetch_related('items', 'items__sales_item', 'items__sales_item__variant', 'items__sales_item__variant__product').order_by('-return_date')
+
+    def get_serializer_class(self):
+        if self.action in ['create']:
+            return ReturnTransactionCreateSerializer
+        return ReturnTransactionSerializer
