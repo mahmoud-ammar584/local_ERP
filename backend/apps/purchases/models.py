@@ -35,7 +35,8 @@ class PurchaseOrder(models.Model):
                 item.received_quantity += qty_to_receive
                 item.save()
                 # --- ASYNC STOCK UPDATE (Phase 9) ---
-                update_stock(item.variant.id, qty_to_receive)
+                if item.variant_id:
+                    update_stock(item.variant_id, qty_to_receive)
 
     def __str__(self):
         return f'PO-{self.id} ({self.supplier.name})'

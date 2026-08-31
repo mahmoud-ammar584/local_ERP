@@ -99,16 +99,16 @@ class ProductListSerializer(serializers.ModelSerializer):
         return obj.image_url
 
 class ProductCreateSerializer(serializers.ModelSerializer):
-    current_quantity = serializers.IntegerField(required=False, write_only=True)
-    size = serializers.CharField(write_only=True)
-    color = serializers.CharField(write_only=True)
+    current_quantity = serializers.IntegerField(required=False, write_only=True, default=0)
+    size = serializers.CharField(write_only=True, required=False, default='Standard')
+    color = serializers.CharField(write_only=True, required=False, default='Standard')
     gender = serializers.ChoiceField(choices=ProductVariant.GENDER_CHOICES, write_only=True, default='U')
     variant_barcode = serializers.CharField(required=False, allow_blank=True, write_only=True)
 
     def _compute_sku_suffix(self, color: str, size: str, gender: str) -> str:
         # Deterministic suffix for the variant SKU (unique per product).
-        color_code = slugify(color or '').replace('-', '').upper()[:10]
-        size_code = slugify(size or '').replace('-', '').upper()[:10]
+        color_code = slugify(color or 'STD').replace('-', '').upper()[:10]
+        size_code = slugify(size or 'STD').replace('-', '').upper()[:10]
         gender_code = gender if gender in {'M', 'F', 'U'} else 'U'
 
         suffix = f"-{color_code}-{size_code}"
@@ -122,8 +122,8 @@ class ProductCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         current_quantity = validated_data.pop('current_quantity', 0)
-        size = validated_data.pop('size')
-        color = validated_data.pop('color')
+        size = validated_data.pop('size', 'Standard')
+        color = validated_data.pop('color', 'Standard')
         gender = validated_data.pop('gender', 'U')
         variant_barcode = validated_data.pop('variant_barcode', None) or validated_data.get('barcode')
 

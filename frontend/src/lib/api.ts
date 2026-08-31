@@ -309,9 +309,9 @@ export const updateProduct = (id: number, data: Record<string, unknown>) =>
   })
 
 export const adjustProductStock = (variantId: number, newQuantity: number, reason: string) =>
-  fetchJson<any>(`/api/inventory/products/${variantId}/adjust_stock/`, {
+  fetchJson<any>('/api/inventory/products/adjust-stock/', {
     method: 'POST',
-    body: JSON.stringify({ new_quantity: newQuantity, reason }),
+    body: JSON.stringify({ variant_id: variantId, new_quantity: newQuantity, reason }),
   })
 
 export const lookupProductBySku = (sku: string) =>

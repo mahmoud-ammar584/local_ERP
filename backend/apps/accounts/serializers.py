@@ -18,10 +18,10 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    role = serializers.CharField(source='profile.role', read_only=True)
-    company_id = serializers.IntegerField(source='profile.company.id', read_only=True)
-    company_name = serializers.CharField(source='profile.company.name', read_only=True)
-    permissions = serializers.JSONField(source='profile.permissions', read_only=True)
+    role = serializers.CharField(source='profile.role', read_only=True, default='cashier')
+    company_id = serializers.IntegerField(source='profile.company.id', read_only=True, default=None)
+    company_name = serializers.CharField(source='profile.company.name', read_only=True, default=None)
+    permissions = serializers.JSONField(source='profile.permissions', read_only=True, default=dict)
 
     class Meta:
         model = User

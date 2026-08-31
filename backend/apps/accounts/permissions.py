@@ -61,7 +61,16 @@ class HasModulePermission(permissions.BasePermission):
             queryset = getattr(view, 'queryset', None)
             if queryset is not None:
                 module = queryset.model._meta.app_label
-            else:
+            elif hasattr(view, '__module__'):
+                mod_parts = view.__module__.split('.')
+                for part in mod_parts:
+                    if part in ['settings_app', 'settings']:
+                        module = 'settings'
+                        break
+                    elif part in ['sales', 'inventory', 'purchases', 'customers', 'expenses', 'dashboard', 'accounts', 'core', 'users', 'audit']:
+                        module = part
+                        break
+            if not module:
                 return False
 
         # Determine target action

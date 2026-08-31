@@ -83,12 +83,12 @@ def me_view(request):
 
 class UserViewSet(AuditLogMixin, viewsets.ModelViewSet):
     """
-    Company Admin ViewSet to manage user roles/permissions within their company.
+    ViewSet to manage user roles/permissions within their company.
     Self-registration/Direct user creation is disabled. Users are created via Invitations.
     """
     module_name = 'users'
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated, AdminOnly]
+    permission_classes = [IsAuthenticated, HasModulePermission]
 
     def get_queryset(self):
         profile = getattr(self.request.user, 'profile', None)
@@ -133,11 +133,11 @@ class UserViewSet(AuditLogMixin, viewsets.ModelViewSet):
 
 class InvitationViewSet(AuditLogMixin, viewsets.ModelViewSet):
     """
-    ViewSet for Company Admins to manage and issue user invitations by email.
+    ViewSet to manage and issue user invitations by email.
     """
     module_name = 'users'
     serializer_class = InvitationCreateSerializer
-    permission_classes = [IsAuthenticated, AdminOnly]
+    permission_classes = [IsAuthenticated, HasModulePermission]
 
     def get_queryset(self):
         profile = getattr(self.request.user, 'profile', None)
