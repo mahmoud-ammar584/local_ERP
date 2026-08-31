@@ -116,6 +116,7 @@ class SalesTransactionSerializer(serializers.ModelSerializer):
 class SalesTransactionCreateSerializer(serializers.ModelSerializer):
     transaction_date = serializers.DateTimeField(required=False, default=timezone.now)
     payment_method = serializers.PrimaryKeyRelatedField(queryset=PaymentMethod.objects.all(), required=False, allow_null=True)
+    customer = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all(), required=False, allow_null=True)
     items = serializers.ListField(child=serializers.DictField(), required=False)
     lines = serializers.ListField(child=serializers.DictField(), required=False)
 
@@ -133,19 +134,30 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
         if not data.get('transaction_date'):
             data['transaction_date'] = timezone.now()
 
+        if data.get('customer') == '':
+            data['customer'] = None
+
+        request = self.context.get('request')
+        profile = getattr(getattr(request, 'user', None), 'profile', None)
+        company = getattr(profile, 'company', None)
+
         # Support both 'items' and 'lines'
         raw_items = data.pop('items', None) or data.pop('lines', None) or []
         if not raw_items:
             raise serializers.ValidationError({'items': 'At least one item is required in the sale transaction.'})
 
         if not data.get('payment_method'):
-            pm = PaymentMethod.objects.first()
+            pm = PaymentMethod.objects.filter(company=company).first() if company else None
             if not pm:
-                pm = PaymentMethod.objects.create(name='Cash')
+                pm = PaymentMethod.objects.filter(company__isnull=True).first() or PaymentMethod.objects.first()
+            if not pm:
+                pm = PaymentMethod.objects.create(name='Cash', company=company)
             data['payment_method'] = pm
 
         normalized_items = []
-        default_tax = TaxRate.objects.first()
+        default_tax = TaxRate.objects.filter(company=company).first() if company else None
+        if not default_tax:
+            default_tax = TaxRate.objects.filter(company__isnull=True).first() or TaxRate.objects.first()
         
         with transaction.atomic():
             for raw in raw_items:

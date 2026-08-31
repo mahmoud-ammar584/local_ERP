@@ -37,6 +37,16 @@ class SalesTransactionViewSet(TenantScopedViewSetMixin, AuditLogMixin, viewsets.
             return SalesTransactionCreateSerializer
         return SalesTransactionSerializer
 
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            if hasattr(e, 'detail'):
+                return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
     @action(detail=False, methods=['get'])
     def export_csv(self, request):
         """Export sales to CSV file"""
@@ -91,3 +101,13 @@ class ReturnTransactionViewSet(TenantScopedViewSetMixin, AuditLogMixin, viewsets
         if self.action in ['create']:
             return ReturnTransactionCreateSerializer
         return ReturnTransactionSerializer
+
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            if hasattr(e, 'detail'):
+                return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
