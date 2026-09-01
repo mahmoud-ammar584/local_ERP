@@ -268,7 +268,10 @@ export interface StoreInfo {
   phone?: string
   email?: string
   address?: string
-  base_currency?: string
+  base_currency_code?: string
+  is_tax_enabled?: boolean
+  tax_rate_percentage?: number
+  last_rates_sync?: string
 }
 
 export interface Brand { id: number; name: string }
@@ -558,6 +561,11 @@ export const getPaymentMethods = () =>
 
 export const getCurrencies = () =>
   fetchJson<Currency[] | { results: Currency[] }>('/api/settings/currencies/')
+
+export const syncLiveExchangeRates = () =>
+  fetchJson<{ message: string; details: any; currencies: Currency[] }>('/api/settings/currencies/sync-live-rates/', {
+    method: 'POST',
+  })
 
 export const getTaxRates = () =>
   fetchJson<TaxRate[] | { results: TaxRate[] }>('/api/settings/tax-rates/')

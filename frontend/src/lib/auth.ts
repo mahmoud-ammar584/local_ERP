@@ -68,6 +68,15 @@ export function hasPermission(module: string, action: string): boolean {
   return false
 }
 
+export function hasAnyPermission(module: string): boolean {
+  const user = getUser()
+  if (!user) return false
+  if (user.role === 'owner') return true
+  const perms = user.permissions || {}
+  const modulePerms = perms[module] || []
+  return Array.isArray(modulePerms) && modulePerms.length > 0
+}
+
 export function getDefaultRoute(): string {
   const user = getUser()
   if (!user) return '/login'

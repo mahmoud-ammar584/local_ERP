@@ -1,5 +1,5 @@
 from rest_framework import viewsets
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from .models import Brand, Category, Supplier, CustomerType, PaymentMethod, Currency, TaxRate, StoreInfo
 from .serializers import (
@@ -48,6 +48,23 @@ class PaymentMethodViewSet(BaseSettingsViewSet):
 class CurrencyViewSet(BaseSettingsViewSet):
     queryset = Currency.objects.all()
     serializer_class = CurrencySerializer
+
+    def list(self, request, *args, **kwargs):
+        from .services import maybe_auto_sync_rates
+        company = getattr(getattr(request.user, 'profile', None), 'company', None)
+        maybe_auto_sync_rates(company=company)
+        return super().list(request, *args, **kwargs)
+
+    @action(detail=False, methods=['post'], url_path='sync-live-rates')
+    def sync_live_rates(self, request):
+        from .services import sync_exchange_rates
+        company = getattr(getattr(request.user, 'profile', None), 'company', None)
+        res = sync_exchange_rates(company=company)
+        return Response({
+            'message': 'Exchange rates successfully synchronized from Central Bank / Open Rates API',
+            'details': res,
+            'currencies': CurrencySerializer(self.get_queryset(), many=True).data
+        })
 
 
 class TaxRateViewSet(BaseSettingsViewSet):

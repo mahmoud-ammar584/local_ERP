@@ -2,7 +2,7 @@ import React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n'
-import { getUser, hasPermission } from '@/lib/auth'
+import { getUser, hasPermission, hasAnyPermission } from '@/lib/auth'
 import {
   LayoutDashboard,
   Shirt,
@@ -33,22 +33,19 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       label: t('navDashboard'),
       href: '/dashboard',
       icon: LayoutDashboard,
-      show: user?.role === 'owner' || hasPermission('dashboard', 'view'),
+      show: user?.role === 'owner' || hasAnyPermission('dashboard') || hasPermission('dashboard', 'view'),
     },
     {
       label: t('navSales'),
       href: '/sales',
       icon: ShoppingCart,
-      show:
-        user?.role === 'owner' ||
-        hasPermission('sales', 'view') ||
-        hasPermission('sales', 'add'),
+      show: user?.role === 'owner' || hasAnyPermission('sales'),
     },
     {
       label: t('navInventory'),
       href: '/inventory',
       icon: Shirt,
-      show: user?.role === 'owner' || hasPermission('inventory', 'view'),
+      show: user?.role === 'owner' || hasAnyPermission('inventory'),
     },
     {
       label: t('navStocktake'),
@@ -58,43 +55,43 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         user?.role === 'owner' ||
         hasPermission('inventory', 'stocktake_view') ||
         hasPermission('inventory', 'stocktake_count') ||
-        hasPermission('inventory', 'view'),
+        hasAnyPermission('inventory'),
     },
     {
       label: t('navPurchases'),
       href: '/purchases',
       icon: Truck,
-      show: user?.role === 'owner' || hasPermission('purchases', 'view'),
+      show: user?.role === 'owner' || hasAnyPermission('purchases'),
     },
     {
       label: t('navCustomers'),
       href: '/customers',
       icon: Users,
-      show: user?.role === 'owner' || hasPermission('customers', 'view'),
+      show: user?.role === 'owner' || hasAnyPermission('customers'),
     },
     {
       label: t('navExpenses'),
       href: '/expenses',
       icon: Receipt,
-      show: user?.role === 'owner' || hasPermission('expenses', 'view'),
+      show: user?.role === 'owner' || hasAnyPermission('expenses'),
     },
     {
       label: t('navSettings'),
       href: '/settings',
       icon: Settings,
-      show: user?.role === 'owner' || hasPermission('settings', 'view'),
+      show: user?.role === 'owner' || hasAnyPermission('settings'),
     },
     {
       label: t('navUsers'),
       href: '/users',
       icon: ShieldCheck,
-      show: user?.role === 'owner' || hasPermission('users', 'view'),
+      show: user?.role === 'owner' || hasAnyPermission('users'),
     },
     {
       label: t('navAudit'),
       href: '/audit',
       icon: History,
-      show: user?.role === 'owner' || hasPermission('audit', 'view'),
+      show: user?.role === 'owner' || hasAnyPermission('audit'),
     },
   ]
 

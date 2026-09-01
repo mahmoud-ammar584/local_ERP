@@ -112,6 +112,19 @@ class StoreInfo(models.Model):
         max_length=100, blank=True, null=True,
         verbose_name="Tax Registration Number"
     )
+    is_tax_enabled = models.BooleanField(
+        default=True,
+        help_text="Global VAT active / inactive toggle"
+    )
+    tax_rate_percentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=14.00,
+        help_text="Default VAT percentage (e.g. 14 for 14%)"
+    )
+    base_currency_code = models.CharField(
+        max_length=10, default='EGP',
+        help_text="Base store currency for calculations"
+    )
+    last_rates_sync = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Store Info'

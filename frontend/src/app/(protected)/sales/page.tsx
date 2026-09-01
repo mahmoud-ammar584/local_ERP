@@ -412,8 +412,10 @@ export default function SalesPage() {
   const transactionDiscountAmount = (totalAfterItemDiscounts * discountRate) / 100
   const totalDiscount = itemDiscounts + transactionDiscountAmount
 
+  const isTaxActive = storeInfo?.is_tax_enabled !== false
   const defaultTaxRate = (taxRates as any[]).find((t) => t.is_default) || taxRates[0]
-  const taxMultiplier = defaultTaxRate ? Number(defaultTaxRate.rate || 0) : 0.14
+  const configuredTaxPct = storeInfo?.tax_rate_percentage != null ? Number(storeInfo.tax_rate_percentage) : (defaultTaxRate ? Number(defaultTaxRate.rate || 0.14) * 100 : 14)
+  const taxMultiplier = isTaxActive ? (configuredTaxPct / 100) : 0
   const calculatedTax = (totalAfterItemDiscounts - transactionDiscountAmount) * taxMultiplier
   const finalTotal = Math.max(0, totalAfterItemDiscounts - transactionDiscountAmount + calculatedTax)
 

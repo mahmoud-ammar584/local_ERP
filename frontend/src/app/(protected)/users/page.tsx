@@ -257,14 +257,14 @@ export default function UsersPage() {
   }
 
   useEffect(() => {
-    if (canView) {
+    if (canView || canAddUser || canEditUser || canDeleteUser) {
       loadData()
     } else {
       setLoading(false)
     }
-  }, [canView])
+  }, [canView, canAddUser, canEditUser, canDeleteUser])
 
-  if (!canView) {
+  if (!canView && !canAddUser && !canEditUser && !canDeleteUser) {
     return (
       <div className="p-8 rounded-2xl bg-[#0c0c10] border border-red-500/30 text-center space-y-3">
         <div className="w-12 h-12 rounded-xl bg-red-500/10 text-red-400 flex items-center justify-center mx-auto">
