@@ -46,6 +46,7 @@ export default function InventoryPage() {
   const [search, setSearch] = useState('')
 
   // Granular Permissions
+  const canView = hasPermission('inventory', 'view')
   const canAdd = hasPermission('inventory', 'add')
   const canAdjust = hasPermission('inventory', 'adjust_stock')
   const canPrintBarcode = hasPermission('inventory', 'print_barcode')
@@ -120,9 +121,31 @@ export default function InventoryPage() {
   }
 
   useEffect(() => {
-    loadInventory()
-    loadMetadata()
-  }, [])
+    if (canView) {
+      loadInventory()
+      loadMetadata()
+    } else {
+      setLoading(false)
+    }
+  }, [canView])
+
+  if (!canView) {
+    return (
+      <div className="p-8 rounded-2xl bg-[#0c0c10] border border-red-500/30 text-center space-y-3">
+        <div className="w-12 h-12 rounded-xl bg-red-500/10 text-red-400 flex items-center justify-center mx-auto">
+          <Lock className="w-6 h-6" />
+        </div>
+        <h2 className="text-base font-bold text-white">
+          {language === 'ar' ? 'غير مصرح بالوصول إلى المخزون والمنتجات' : 'Access Restricted to Inventory'}
+        </h2>
+        <p className="text-xs text-zinc-400 max-w-md mx-auto">
+          {language === 'ar'
+            ? 'يتطلب حسابك الحصول على صلاحية عرض المخزون والمنتجات من قبل الإدارة.'
+            : 'Your account does not have permission to view inventory and products.'}
+        </p>
+      </div>
+    )
+  }
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault()

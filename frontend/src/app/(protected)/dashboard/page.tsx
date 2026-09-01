@@ -12,6 +12,7 @@ import {
   TopProductItem,
   TopCustomerItem,
 } from '@/lib/api'
+import { getUser, hasPermission } from '@/lib/auth'
 import {
   TrendingUp,
   DollarSign,
@@ -22,10 +23,14 @@ import {
   ArrowUpRight,
   Sparkles,
   Calendar,
+  Lock,
 } from 'lucide-react'
 
 export default function DashboardPage() {
   const { t, language } = useLanguage()
+  const user = getUser()
+  const canView = user?.role === 'owner' || hasPermission('dashboard', 'view')
+
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'year'>('month')
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [salesTrend, setSalesTrend] = useState<SalesOverTimeItem[]>([])
@@ -34,6 +39,11 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!canView) {
+      setLoading(false)
+      return
+    }
+
     async function loadData() {
       setLoading(true)
       try {
@@ -55,7 +65,25 @@ export default function DashboardPage() {
     }
 
     loadData()
-  }, [period])
+  }, [period, canView])
+
+  if (!canView) {
+    return (
+      <div className="p-8 rounded-2xl bg-[#0c0c10] border border-red-500/30 text-center space-y-3">
+        <div className="w-12 h-12 rounded-xl bg-red-500/10 text-red-400 flex items-center justify-center mx-auto">
+          <Lock className="w-6 h-6" />
+        </div>
+        <h2 className="text-base font-bold text-white">
+          {language === 'ar' ? 'غير مصرح بالوصول إلى لوحة التحكم' : 'Access Restricted to Dashboard'}
+        </h2>
+        <p className="text-xs text-zinc-400 max-w-md mx-auto">
+          {language === 'ar'
+            ? 'يتطلب حسابك الحصول على صلاحية عرض الإحصائيات والمؤشرات العامة من قبل الإدارة.'
+            : 'Your account does not have permission to view dashboard metrics.'}
+        </p>
+      </div>
+    )
+  }
 
   const formatCurrency = (val: number | undefined) => {
     const num = Number(val || 0)

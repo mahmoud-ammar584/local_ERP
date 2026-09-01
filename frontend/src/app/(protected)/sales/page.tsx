@@ -5,6 +5,7 @@ import { useLanguage } from '@/lib/i18n'
 import {
   getProducts,
   getCustomers,
+  createCustomer,
   getPaymentMethods,
   getTaxRates,
   getSalesTransactions,
@@ -46,6 +47,10 @@ import {
   Volume2,
   VolumeX,
   RotateCcw,
+  UserPlus,
+  Phone,
+  User,
+  ChevronDown,
 } from 'lucide-react'
 
 interface CartItem {
@@ -86,6 +91,16 @@ export default function SalesPage() {
   const [selectedCustomer, setSelectedCustomer] = useState<string>('')
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('')
   const [transactionDiscount, setTransactionDiscount] = useState<number>(0)
+
+  // Customer Search & Quick Add State
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('')
+  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false)
+  const [isQuickCustomerModalOpen, setIsQuickCustomerModalOpen] = useState(false)
+  const [quickCustomerName, setQuickCustomerName] = useState('')
+  const [quickCustomerPhone, setQuickCustomerPhone] = useState('')
+  const [quickCustomerEmail, setQuickCustomerEmail] = useState('')
+  const [quickCustomerAddress, setQuickCustomerAddress] = useState('')
+  const [savingQuickCustomer, setSavingQuickCustomer] = useState(false)
 
   // Quick Barcode Scanning State
   const [barcodeInput, setBarcodeInput] = useState('')
@@ -356,6 +371,59 @@ export default function SalesPage() {
   const taxMultiplier = defaultTaxRate ? Number(defaultTaxRate.rate || 0) : 0.14
   const calculatedTax = (totalAfterItemDiscounts - transactionDiscountAmount) * taxMultiplier
   const finalTotal = Math.max(0, totalAfterItemDiscounts - transactionDiscountAmount + calculatedTax)
+
+  // Customer Filters and Search Logic
+  const selectedCustomerObj = customers.find((c) => String(c.id) === String(selectedCustomer))
+
+  const filteredCustomers = customers.filter((c) => {
+    if (!customerSearchQuery.trim()) return true
+    const q = customerSearchQuery.toLowerCase().trim()
+    const matchName = c.name?.toLowerCase().includes(q)
+    const matchPhone = c.phone?.toLowerCase().includes(q)
+    return matchName || matchPhone
+  })
+
+  const handleOpenQuickCustomerModal = (initialQuery = '') => {
+    const trimmed = initialQuery.trim()
+    if (/^[0-9+]+$/.test(trimmed)) {
+      setQuickCustomerPhone(trimmed)
+      setQuickCustomerName('')
+    } else {
+      setQuickCustomerName(trimmed)
+      setQuickCustomerPhone('')
+    }
+    setQuickCustomerEmail('')
+    setQuickCustomerAddress('')
+    setIsCustomerDropdownOpen(false)
+    setIsQuickCustomerModalOpen(true)
+  }
+
+  const handleQuickCreateCustomer = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!quickCustomerName.trim()) return
+    setSavingQuickCustomer(true)
+    try {
+      const newCust = await createCustomer({
+        name: quickCustomerName.trim(),
+        phone: quickCustomerPhone.trim() || undefined,
+        email: quickCustomerEmail.trim() || undefined,
+        address: quickCustomerAddress.trim() || undefined,
+      })
+      setCustomers((prev) => [newCust, ...prev])
+      setSelectedCustomer(String(newCust.id))
+      setCustomerSearchQuery('')
+      setIsQuickCustomerModalOpen(false)
+      setQuickCustomerName('')
+      setQuickCustomerPhone('')
+      setQuickCustomerEmail('')
+      setQuickCustomerAddress('')
+      if (soundEnabled) soundFx.playScanSuccess()
+    } catch (err: any) {
+      alert(err.message || 'Failed to create customer')
+    } finally {
+      setSavingQuickCustomer(false)
+    }
+  }
 
   // Handle Checkout Submission
   const handleCheckout = async () => {
@@ -736,23 +804,163 @@ export default function SalesPage() {
 
                 {/* Customer & Payment Setup */}
                 <div className="space-y-3 pt-3 border-t border-zinc-800 text-xs">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] text-zinc-400 mb-1">
-                        {t('customer')}
-                      </label>
-                      <select
-                        value={selectedCustomer}
-                        onChange={(e) => setSelectedCustomer(e.target.value)}
-                        className="w-full px-2.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-amber-400"
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {/* Searchable Customer Combobox */}
+                    <div className="relative">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] text-zinc-400 font-semibold flex items-center gap-1">
+                          <User className="w-3 h-3 text-amber-400" />
+                          <span>{t('customer')}</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenQuickCustomerModal(customerSearchQuery)}
+                          className="text-[10px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 transition"
+                        >
+                          <UserPlus className="w-3 h-3" />
+                          <span>{language === 'ar' ? '+ عميل جديد' : '+ New Customer'}</span>
+                        </button>
+                      </div>
+
+                      {/* Selected Customer Trigger Box */}
+                      <div
+                        onClick={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
+                        className="w-full px-2.5 py-2 bg-zinc-950 border border-zinc-800 hover:border-amber-500/40 rounded-xl text-white text-xs cursor-pointer flex items-center justify-between transition group"
                       >
-                        <option value="">{language === 'ar' ? 'عميل نقدي (Walk-in)' : 'Walk-in Customer'}</option>
-                        {customers.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} {c.phone ? `(${c.phone})` : ''}
-                          </option>
-                        ))}
-                      </select>
+                        <div className="flex items-center gap-1.5 truncate">
+                          {selectedCustomerObj ? (
+                            <>
+                              <span className="font-bold text-white truncate">{selectedCustomerObj.name}</span>
+                              {selectedCustomerObj.phone && (
+                                <span className="text-[10px] text-zinc-400 font-mono flex items-center gap-0.5">
+                                  <Phone className="w-2.5 h-2.5 text-amber-400" />
+                                  <span>{selectedCustomerObj.phone}</span>
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-zinc-400">
+                              {language === 'ar' ? 'عميل نقدي (Walk-in)' : 'Walk-in Customer'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {selectedCustomerObj && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedCustomer('')
+                              }}
+                              className="p-1 text-zinc-500 hover:text-red-400 transition"
+                              title={language === 'ar' ? 'تحويل لعميل نقدي' : 'Clear to Walk-in'}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                          <ChevronDown className="w-3.5 h-3.5 text-zinc-500 group-hover:text-amber-400 transition" />
+                        </div>
+                      </div>
+
+                      {/* Dropdown Menu */}
+                      {isCustomerDropdownOpen && (
+                        <div className="absolute top-full start-0 end-0 z-30 mt-1.5 p-2 bg-[#0c0c10] border border-zinc-800 rounded-2xl shadow-2xl space-y-2">
+                          {/* Search Input by Name or Phone */}
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 absolute inset-y-0 start-2.5 my-auto text-zinc-500" />
+                            <input
+                              type="text"
+                              autoFocus
+                              value={customerSearchQuery}
+                              onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                              placeholder={language === 'ar' ? 'ابحث بالاسم أو رقم الهاتف...' : 'Search by name or phone...'}
+                              className="w-full ps-8 pe-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                            />
+                            {customerSearchQuery && (
+                              <button
+                                type="button"
+                                onClick={() => setCustomerSearchQuery('')}
+                                className="absolute inset-y-0 end-2.5 my-auto text-zinc-500 hover:text-white"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Quick Add Button if typed query */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenQuickCustomerModal(customerSearchQuery)}
+                            className="w-full p-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition"
+                          >
+                            <UserPlus className="w-3.5 h-3.5" />
+                            <span>
+                              {language === 'ar'
+                                ? customerSearchQuery ? `إضافة "${customerSearchQuery}" كعميل جديد` : 'إضافة عميل جديد'
+                                : customerSearchQuery ? `Add "${customerSearchQuery}" as New Customer` : 'Add New Customer'}
+                            </span>
+                          </button>
+
+                          {/* Customers List */}
+                          <div className="max-h-48 overflow-y-auto space-y-1 pe-1">
+                            {/* Walk-in Customer Option */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedCustomer('')
+                                setIsCustomerDropdownOpen(false)
+                                setCustomerSearchQuery('')
+                              }}
+                              className={`w-full p-2 rounded-xl text-xs text-start flex items-center justify-between transition ${
+                                !selectedCustomer
+                                  ? 'bg-amber-500/15 text-amber-300 font-bold border border-amber-500/30'
+                                  : 'hover:bg-zinc-900 text-zinc-300'
+                              }`}
+                            >
+                              <span>{language === 'ar' ? 'عميل نقدي (Walk-in Customer)' : 'Walk-in Customer'}</span>
+                              {!selectedCustomer && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                            </button>
+
+                            {/* Filtered Customers */}
+                            {filteredCustomers.length === 0 && customerSearchQuery ? (
+                              <div className="p-3 text-center text-zinc-500 text-[11px]">
+                                {language === 'ar' ? 'لم يتم العثور على عميل بهذا الاسم أو الرقم' : 'No customers matching search'}
+                              </div>
+                            ) : (
+                              filteredCustomers.map((c) => {
+                                const isSelected = String(c.id) === String(selectedCustomer)
+                                return (
+                                  <button
+                                    key={c.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedCustomer(String(c.id))
+                                      setIsCustomerDropdownOpen(false)
+                                      setCustomerSearchQuery('')
+                                    }}
+                                    className={`w-full p-2 rounded-xl text-xs text-start flex items-center justify-between gap-2 transition ${
+                                      isSelected
+                                        ? 'bg-amber-500/15 text-amber-300 font-bold border border-amber-500/30'
+                                        : 'hover:bg-zinc-900 text-zinc-300'
+                                    }`}
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <div className="font-semibold text-white truncate">{c.name}</div>
+                                      {c.phone && (
+                                        <div className="text-[10px] text-zinc-400 font-mono flex items-center gap-1 mt-0.5">
+                                          <Phone className="w-2.5 h-2.5 text-amber-400" />
+                                          <span>{c.phone}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {isSelected && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                                  </button>
+                                )
+                              })
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -931,6 +1139,110 @@ export default function SalesPage() {
         transactions={transactions}
         onReturnSuccess={loadInitialData}
       />
+
+      {/* Modal: Quick Add Customer (Directly from POS) */}
+      {isQuickCustomerModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-[#0c0c10] border border-amber-500/30 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <UserPlus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    {language === 'ar' ? 'إضافة عميل جديد سريعاً' : 'Quick Add Customer'}
+                  </h3>
+                  <p className="text-[11px] text-zinc-400">
+                    {language === 'ar' ? 'تسجيل العميل وإدراجه في الفاتورة الحالية فوراً' : 'Add and select for current checkout'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsQuickCustomerModalOpen(false)}
+                className="text-zinc-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickCreateCustomer} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                  {language === 'ar' ? 'اسم العميل *' : 'Customer Name *'}
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={quickCustomerName}
+                  onChange={(e) => setQuickCustomerName(e.target.value)}
+                  placeholder={language === 'ar' ? 'مثال: سارة أحمد' : 'e.g. Sarah Ahmed'}
+                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1">
+                  <Phone className="w-3 h-3 text-amber-400" />
+                  <span>{language === 'ar' ? 'رقم الهاتف' : 'Phone Number'}</span>
+                </label>
+                <input
+                  type="tel"
+                  value={quickCustomerPhone}
+                  onChange={(e) => setQuickCustomerPhone(e.target.value)}
+                  placeholder="010XXXXXXXX"
+                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                  {language === 'ar' ? 'البريد الإلكتروني (اختياري)' : 'Email (Optional)'}
+                </label>
+                <input
+                  type="email"
+                  value={quickCustomerEmail}
+                  onChange={(e) => setQuickCustomerEmail(e.target.value)}
+                  placeholder="customer@example.com"
+                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                  {language === 'ar' ? 'العنوان / المدينة (اختياري)' : 'Address / City (Optional)'}
+                </label>
+                <input
+                  type="text"
+                  value={quickCustomerAddress}
+                  onChange={(e) => setQuickCustomerAddress(e.target.value)}
+                  placeholder={language === 'ar' ? 'القاهرة، المعادي...' : 'Cairo, Maadi...'}
+                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="flex items-center gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickCustomerModalOpen(false)}
+                  className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-semibold rounded-xl"
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingQuickCustomer || !quickCustomerName.trim()}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 disabled:opacity-50"
+                >
+                  {savingQuickCustomer ? t('loading') : (language === 'ar' ? 'حفظ واختيار العميل' : 'Save & Select')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

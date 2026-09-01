@@ -33,7 +33,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       label: t('navDashboard'),
       href: '/dashboard',
       icon: LayoutDashboard,
-      show: user?.role === 'owner' || user?.role === 'admin' || hasPermission('dashboard', 'view'),
+      show: user?.role === 'owner' || hasPermission('dashboard', 'view'),
     },
     {
       label: t('navSales'),
@@ -41,7 +41,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       icon: ShoppingCart,
       show:
         user?.role === 'owner' ||
-        user?.role === 'admin' ||
         hasPermission('sales', 'view') ||
         hasPermission('sales', 'add'),
     },
@@ -49,7 +48,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       label: t('navInventory'),
       href: '/inventory',
       icon: Shirt,
-      show: user?.role === 'owner' || user?.role === 'admin' || hasPermission('inventory', 'view'),
+      show: user?.role === 'owner' || hasPermission('inventory', 'view'),
     },
     {
       label: t('navStocktake'),
@@ -57,45 +56,45 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       icon: ClipboardCheck,
       show:
         user?.role === 'owner' ||
-        user?.role === 'admin' ||
         hasPermission('inventory', 'stocktake_view') ||
-        hasPermission('inventory', 'stocktake_count'),
+        hasPermission('inventory', 'stocktake_count') ||
+        hasPermission('inventory', 'view'),
     },
     {
       label: t('navPurchases'),
       href: '/purchases',
       icon: Truck,
-      show: user?.role === 'owner' || user?.role === 'admin' || hasPermission('purchases', 'view'),
+      show: user?.role === 'owner' || hasPermission('purchases', 'view'),
     },
     {
       label: t('navCustomers'),
       href: '/customers',
       icon: Users,
-      show: user?.role === 'owner' || user?.role === 'admin' || hasPermission('customers', 'view'),
+      show: user?.role === 'owner' || hasPermission('customers', 'view'),
     },
     {
       label: t('navExpenses'),
       href: '/expenses',
       icon: Receipt,
-      show: user?.role === 'owner' || user?.role === 'admin' || hasPermission('expenses', 'view'),
+      show: user?.role === 'owner' || hasPermission('expenses', 'view'),
     },
     {
       label: t('navSettings'),
       href: '/settings',
       icon: Settings,
-      show: user?.role === 'owner' || user?.role === 'admin' || hasPermission('settings', 'view'),
+      show: user?.role === 'owner' || hasPermission('settings', 'view'),
     },
     {
       label: t('navUsers'),
       href: '/users',
       icon: ShieldCheck,
-      show: user?.role === 'owner' || user?.role === 'admin' || hasPermission('users', 'view'),
+      show: user?.role === 'owner' || hasPermission('users', 'view'),
     },
     {
       label: t('navAudit'),
       href: '/audit',
       icon: History,
-      show: user?.role === 'owner' || user?.role === 'admin' || hasPermission('audit', 'view'),
+      show: user?.role === 'owner' || hasPermission('audit', 'view'),
     },
   ]
 

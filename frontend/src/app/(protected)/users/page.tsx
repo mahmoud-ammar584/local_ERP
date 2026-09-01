@@ -218,6 +218,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true)
 
   // Permissions to manage users
+  const canView = currentUser?.role === 'owner' || hasPermission('users', 'view')
   const canAddUser = hasPermission('users', 'add')
   const canEditUser = hasPermission('users', 'edit')
   const canDeleteUser = hasPermission('users', 'delete')
@@ -256,8 +257,30 @@ export default function UsersPage() {
   }
 
   useEffect(() => {
-    loadData()
-  }, [])
+    if (canView) {
+      loadData()
+    } else {
+      setLoading(false)
+    }
+  }, [canView])
+
+  if (!canView) {
+    return (
+      <div className="p-8 rounded-2xl bg-[#0c0c10] border border-red-500/30 text-center space-y-3">
+        <div className="w-12 h-12 rounded-xl bg-red-500/10 text-red-400 flex items-center justify-center mx-auto">
+          <Lock className="w-6 h-6" />
+        </div>
+        <h2 className="text-base font-bold text-white">
+          {language === 'ar' ? 'غير مصرح بالوصول إلى إدارة فريق العمل' : 'Access Restricted to Team Management'}
+        </h2>
+        <p className="text-xs text-zinc-400 max-w-md mx-auto">
+          {language === 'ar'
+            ? 'يتطلب حسابك الحصول على صلاحية إدارة المستخدمين والصلاحيات من قبل الإدارة.'
+            : 'Your account does not have permission to view or manage team members.'}
+        </p>
+      </div>
+    )
+  }
 
   // Apply Role Preset Helper
   const applyPreset = (
