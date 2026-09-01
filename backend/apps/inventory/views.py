@@ -134,62 +134,74 @@ class ProductViewSet(AuditLogMixin, TenantScopedViewSetMixin, viewsets.ModelView
     @action(detail=True, methods=['post'], url_path='add-variant')
     def add_variant(self, request, pk=None):
         """
-        Add a new Color/Size variant to an existing Product.
+        Add one or multiple Color/Size variants to an existing Product.
+        Supports single payload or { "variants": [...] } batch payload.
         """
         product = self.get_object()
-        color = request.data.get('color', 'Standard').strip()
-        size = request.data.get('size', 'Standard').strip()
-        gender = request.data.get('gender', 'U').strip()
-        barcode = request.data.get('barcode', '').strip() or None
-        image_url = request.data.get('image_url', '').strip() or None
-        price_override = request.data.get('price_override')
-        initial_quantity = int(request.data.get('current_quantity') or request.data.get('initial_quantity') or request.data.get('quantity') or 0)
-
         from .serializers import compute_sku_suffix
-        sku_suffix = request.data.get('sku_suffix') or compute_sku_suffix(color=color, size=size, gender=gender)
+
+        raw_variants = request.data.get('variants')
+        if not isinstance(raw_variants, list) or len(raw_variants) == 0:
+            raw_variants = [request.data]
+
+        created_or_updated = []
 
         with transaction.atomic():
-            variant, created = ProductVariant.objects.get_or_create(
-                product=product,
-                sku_suffix=sku_suffix,
-                defaults={
-                    'color': color,
-                    'size': size,
-                    'gender': gender,
-                    'barcode': barcode,
-                    'image_url': image_url,
-                    'price_override': price_override
-                }
-            )
+            for item in raw_variants:
+                color = str(item.get('color', 'Standard')).strip()
+                size = str(item.get('size', 'Standard')).strip()
+                gender = str(item.get('gender', 'U')).strip()
+                barcode = str(item.get('barcode', '')).strip() or None
+                image_url = str(item.get('image_url', '')).strip() or None
+                price_override = item.get('price_override')
+                initial_quantity = int(item.get('current_quantity') or item.get('initial_quantity') or item.get('quantity') or 0)
 
-            if not created:
-                if color: variant.color = color
-                if size: variant.size = size
-                if barcode: variant.barcode = barcode
-                if image_url: variant.image_url = image_url
-                if price_override is not None: variant.price_override = price_override
-                variant.save()
+                sku_suffix = item.get('sku_suffix') or compute_sku_suffix(color=color, size=size, gender=gender)
 
-            stock, _ = Stock.objects.get_or_create(variant=variant)
-            if created:
-                stock.current_quantity = initial_quantity
-            else:
-                stock.current_quantity += initial_quantity
-            stock.save()
+                variant, created = ProductVariant.objects.get_or_create(
+                    product=product,
+                    sku_suffix=sku_suffix,
+                    defaults={
+                        'color': color,
+                        'size': size,
+                        'gender': gender,
+                        'barcode': barcode,
+                        'image_url': image_url,
+                        'price_override': price_override
+                    }
+                )
 
-            log_activity(
-                user=request.user,
-                action=f"Variant added/updated: {variant.full_sku} for {product.model_name}",
-                model_name="ProductVariant",
-                object_id=variant.id,
-                details={
-                    "color": color,
-                    "size": size,
-                    "initial_quantity": initial_quantity
-                }
-            )
+                if not created:
+                    if color: variant.color = color
+                    if size: variant.size = size
+                    if barcode: variant.barcode = barcode
+                    if image_url: variant.image_url = image_url
+                    if price_override is not None: variant.price_override = price_override
+                    variant.save()
 
-        return response.Response(ProductVariantSerializer(variant).data, status=status.HTTP_201_CREATED)
+                stock, _ = Stock.objects.get_or_create(variant=variant)
+                if created:
+                    stock.current_quantity = initial_quantity
+                else:
+                    stock.current_quantity += initial_quantity
+                stock.save()
+
+                log_activity(
+                    user=request.user,
+                    action=f"Variant added/updated: {variant.full_sku} for {product.model_name}",
+                    model_name="ProductVariant",
+                    object_id=variant.id,
+                    details={
+                        "color": color,
+                        "size": size,
+                        "initial_quantity": initial_quantity
+                    }
+                )
+                created_or_updated.append(variant)
+
+        if len(created_or_updated) == 1:
+            return response.Response(ProductVariantSerializer(created_or_updated[0]).data, status=status.HTTP_201_CREATED)
+        return response.Response(ProductVariantSerializer(created_or_updated, many=True).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'])
     def lookup(self, request):

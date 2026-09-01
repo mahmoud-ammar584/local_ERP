@@ -358,17 +358,33 @@ export const uploadProductImage = (file: File, variantId?: number, productId?: n
   return fetchFormData<{ message: string; url: string; path: string }>('/api/inventory/products/upload-image/', formData)
 }
 
-export const addVariantToProduct = (productId: number, data: {
-  color: string
-  size: string
-  gender?: string
-  barcode?: string
-  image_url?: string
-  initial_quantity?: number
-  current_quantity?: number
-  price_override?: number
-}) =>
-  fetchJson<ProductVariant>(`/api/inventory/products/${productId}/add-variant/`, {
+export const addVariantToProduct = (
+  productId: number,
+  data:
+    | {
+        color: string
+        size: string
+        gender?: string
+        barcode?: string
+        image_url?: string
+        initial_quantity?: number
+        current_quantity?: number
+        price_override?: number
+      }
+    | {
+        variants: Array<{
+          color: string
+          size: string
+          gender?: string
+          barcode?: string
+          image_url?: string
+          initial_quantity?: number
+          current_quantity?: number
+          price_override?: number
+        }>
+      }
+) =>
+  fetchJson<any>(`/api/inventory/products/${productId}/add-variant/`, {
     method: 'POST',
     body: JSON.stringify(data),
   })

@@ -8,6 +8,7 @@ import {
   createProduct,
   adjustProductStock,
   getBrands,
+  createBrand,
   getCategories,
   getSuppliers,
   getCurrencies,
@@ -52,7 +53,36 @@ import {
   Camera,
   PlusCircle,
   Loader2,
+  Palette,
+  CheckSquare,
+  Square,
 } from 'lucide-react'
+
+// Standard Luxury Color Presets
+const LUXURY_COLOR_PRESETS = [
+  { name: 'Black', hex: '#111111', labelAr: 'أسود' },
+  { name: 'White', hex: '#FFFFFF', labelAr: 'أبيض' },
+  { name: 'Off-White', hex: '#FAF9F6', labelAr: 'أوف وايت / كريمي' },
+  { name: 'Navy Blue', hex: '#0B1930', labelAr: 'كحلي / نيفي' },
+  { name: 'Beige', hex: '#D4B996', labelAr: 'بيج' },
+  { name: 'Camel', hex: '#C19A6B', labelAr: 'جملي / هافان' },
+  { name: 'Olive Green', hex: '#556B2F', labelAr: 'زيتي / أوليف' },
+  { name: 'Burgundy', hex: '#6A1A24', labelAr: 'نبيتي / بورجوندي' },
+  { name: 'Emerald Green', hex: '#097969', labelAr: 'أخضر زمردي' },
+  { name: 'Royal Blue', hex: '#1E3A8A', labelAr: 'أزرق رويال' },
+  { name: 'Charcoal Grey', hex: '#36454F', labelAr: 'رمادي غامق / فيراني' },
+  { name: 'Light Grey', hex: '#D3D3D3', labelAr: 'رمادي فاتح' },
+  { name: 'Brown', hex: '#5C4033', labelAr: 'بني' },
+  { name: 'Dusty Rose', hex: '#DCAE96', labelAr: 'وردي / كشمير' },
+  { name: 'Red', hex: '#B22222', labelAr: 'أحمر' },
+  { name: 'Gold', hex: '#D4AF37', labelAr: 'ذهبي' },
+  { name: 'Silver', hex: '#C0C0C0', labelAr: 'فضي' },
+]
+
+const STANDARD_SIZES_PRESETS = [
+  'XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', 'Free Size', 'Standard',
+  '38', '39', '40', '41', '42', '43', '44', '45',
+]
 
 interface ColorEntry {
   id: string
@@ -71,6 +101,13 @@ interface VariantMatrixRow {
   current_quantity: number
   price_override?: number
   image_url: string
+}
+
+interface MultiSizeItem {
+  size: string
+  quantity: number
+  barcode: string
+  price_override?: number
 }
 
 export default function InventoryPage() {
@@ -95,6 +132,11 @@ export default function InventoryPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [currencies, setCurrencies] = useState<Currency[]>([])
 
+  // Quick Brand Add State
+  const [isQuickBrandModalOpen, setIsQuickBrandModalOpen] = useState(false)
+  const [quickBrandName, setQuickBrandName] = useState('')
+  const [quickBrandSaving, setQuickBrandSaving] = useState(false)
+
   // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false)
@@ -102,16 +144,21 @@ export default function InventoryPage() {
   const [newQty, setNewQty] = useState<number>(0)
   const [adjustReason, setAdjustReason] = useState('Manual Stock Count')
 
-  // Add Variant to Existing Product Modal State
+  // --- Add Multi-Size Variants to Existing Product Modal State ---
   const [isAddVariantModalOpen, setIsAddVariantModalOpen] = useState(false)
   const [activeProductForVariant, setActiveProductForVariant] = useState<Product | null>(null)
-  const [newVariantColor, setNewVariantColor] = useState('Black')
-  const [newVariantSize, setNewVariantSize] = useState('M')
-  const [newVariantGender, setNewVariantGender] = useState('U')
-  const [newVariantBarcode, setNewVariantBarcode] = useState('')
-  const [newVariantQty, setNewVariantQty] = useState(1)
-  const [newVariantPriceOverride, setNewVariantPriceOverride] = useState<string>('')
-  const [newVariantImageUrl, setNewVariantImageUrl] = useState('')
+  
+  const [selectedColorName, setSelectedColorName] = useState('Black')
+  const [isCustomColorInput, setIsCustomColorInput] = useState(false)
+  const [customColorText, setCustomColorText] = useState('')
+  
+  const [selectedSizesMap, setSelectedSizesMap] = useState<Record<string, MultiSizeItem>>({
+    'M': { size: 'M', quantity: 5, barcode: '' },
+    'L': { size: 'L', quantity: 5, barcode: '' },
+  })
+  const [customSizeInput, setCustomSizeInput] = useState('')
+  
+  const [variantImageUrl, setVariantImageUrl] = useState('')
   const [uploadingVariantImage, setUploadingVariantImage] = useState(false)
   const [addingVariantSaving, setAddingVariantSaving] = useState(false)
   const [addVariantError, setAddVariantError] = useState('')
@@ -313,18 +360,75 @@ export default function InventoryPage() {
     }
   }
 
-  // --- Open Add Variant Modal for Existing Product ---
+  // --- Quick Create Brand ---
+  const handleCreateQuickBrand = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!quickBrandName.trim()) return
+    setQuickBrandSaving(true)
+    try {
+      const newBrand = await createBrand({ name: quickBrandName.trim() })
+      setBrands((prev) => [...prev, newBrand])
+      setForm((f) => ({ ...f, brand: String(newBrand.id) }))
+      showToast(`تم إنشاء واختيار ماركة (${newBrand.name}) بنجاح!`)
+      setQuickBrandName('')
+      setIsQuickBrandModalOpen(false)
+    } catch (err: any) {
+      alert(err.message || 'Failed to create brand')
+    } finally {
+      setQuickBrandSaving(false)
+    }
+  }
+
+  // --- Open Multi-Size Variant Modal for Existing Product ---
   const handleOpenAddVariantModal = (product: Product) => {
     setActiveProductForVariant(product)
-    setNewVariantColor(product.variants?.[0]?.color || 'Black')
-    setNewVariantSize('M')
-    setNewVariantGender('U')
-    setNewVariantBarcode('')
-    setNewVariantQty(1)
-    setNewVariantPriceOverride('')
-    setNewVariantImageUrl('')
+    
+    // Default color to first color or Black
+    const existingColor = product.colors?.[0]?.color || product.variants?.[0]?.color || 'Black'
+    setSelectedColorName(existingColor)
+    setIsCustomColorInput(false)
+    setCustomColorText('')
+
+    // Set default selected sizes (S, M, L)
+    setSelectedSizesMap({
+      'S': { size: 'S', quantity: 5, barcode: '' },
+      'M': { size: 'M', quantity: 5, barcode: '' },
+      'L': { size: 'L', quantity: 5, barcode: '' },
+    })
+    setCustomSizeInput('')
+    setVariantImageUrl('')
     setAddVariantError('')
     setIsAddVariantModalOpen(true)
+  }
+
+  // Toggle size selection in multi-size selector
+  const toggleSizeSelection = (size: string) => {
+    setSelectedSizesMap((prev) => {
+      const next = { ...prev }
+      if (next[size]) {
+        delete next[size]
+      } else {
+        next[size] = { size, quantity: 5, barcode: '' }
+      }
+      return next
+    })
+  }
+
+  const handleAddCustomSizeToSelection = () => {
+    if (!customSizeInput.trim()) return
+    const size = customSizeInput.trim().toUpperCase()
+    setSelectedSizesMap((prev) => ({
+      ...prev,
+      [size]: prev[size] || { size, quantity: 5, barcode: '' },
+    }))
+    setCustomSizeInput('')
+  }
+
+  const handleUpdateSizeQty = (size: string, qty: number) => {
+    setSelectedSizesMap((prev) => ({
+      ...prev,
+      [size]: { ...prev[size], quantity: Math.max(0, qty) },
+    }))
   }
 
   const handleUploadModalVariantImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -333,7 +437,7 @@ export default function InventoryPage() {
     setUploadingVariantImage(true)
     try {
       const res = await uploadProductImage(file)
-      setNewVariantImageUrl(res.url)
+      setVariantImageUrl(res.url)
       showToast('تم رفع صورة اللون بنجاح!')
     } catch (err: any) {
       alert(err.message || 'Failed to upload image')
@@ -342,33 +446,44 @@ export default function InventoryPage() {
     }
   }
 
-  const handleSaveNewVariant = async (e: React.FormEvent) => {
+  // Save all selected sizes for the color in 1 single Batch request!
+  const handleSaveMultiSizeVariants = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!activeProductForVariant) return
-    if (!newVariantColor.trim() || !newVariantSize.trim()) {
-      setAddVariantError('يرجى تحديد اللون والمقاس')
+
+    const finalColor = isCustomColorInput ? customColorText.trim() : selectedColorName.trim()
+    if (!finalColor) {
+      setAddVariantError('يرجى تحديد أو كتابة اسم اللون')
+      return
+    }
+
+    const sizesArray = Object.values(selectedSizesMap)
+    if (sizesArray.length === 0) {
+      setAddVariantError('يرجى اختيار مقاس واحد على الأقل')
       return
     }
 
     setAddingVariantSaving(true)
     setAddVariantError('')
 
-    try {
-      const createdVariant = await addVariantToProduct(activeProductForVariant.id, {
-        color: newVariantColor.trim(),
-        size: newVariantSize.trim(),
-        gender: newVariantGender,
-        barcode: newVariantBarcode.trim() || undefined,
-        image_url: newVariantImageUrl.trim() || undefined,
-        initial_quantity: Number(newVariantQty) || 0,
-        price_override: newVariantPriceOverride ? Number(newVariantPriceOverride) : undefined,
-      })
+    const batchPayload = {
+      variants: sizesArray.map((item) => ({
+        color: finalColor,
+        size: item.size,
+        gender: 'U',
+        barcode: item.barcode.trim() || undefined,
+        image_url: variantImageUrl.trim() || undefined,
+        initial_quantity: Number(item.quantity) || 0,
+      })),
+    }
 
-      showToast(`تم إضافة المتغير (${createdVariant.full_sku}) للمنتج بنجاح!`)
+    try {
+      await addVariantToProduct(activeProductForVariant.id, batchPayload)
+      showToast(`تم إنشاء ${sizesArray.length} مقاسات للون (${finalColor}) بسعر الصنف الأساسي بنجاح!`)
       setIsAddVariantModalOpen(false)
       loadInventory() // Refresh live products
     } catch (err: any) {
-      setAddVariantError(err.message || 'فشل إضافة المتغير')
+      setAddVariantError(err.message || 'فشل إضافة المقاسات')
     } finally {
       setAddingVariantSaving(false)
     }
@@ -520,7 +635,7 @@ export default function InventoryPage() {
 
     try {
       await createProduct(payload)
-      showToast('تم إنشاء المنتج والمصفوفة بنجاح!')
+      showToast('تم إنشاء المنتج ومصفوفة المتغيرات بنجاح!')
       setIsAddModalOpen(false)
       loadInventory()
     } catch (err: any) {
@@ -820,14 +935,14 @@ export default function InventoryPage() {
                                   </span>
                                 </div>
 
-                                {/* Button: Add Color / Size Variant to this existing product */}
+                                {/* Button: Add Multi-Size Color Variant to this existing product */}
                                 {canAdd && (
                                   <button
                                     onClick={() => handleOpenAddVariantModal(p)}
-                                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition"
+                                    className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition"
                                   >
-                                    <PlusCircle className="w-3.5 h-3.5" />
-                                    <span>+ إضافة لون أو مقاس للمنتج</span>
+                                    <PlusCircle className="w-4 h-4" />
+                                    <span>+ إضافة لون أو مقاسات متعددة للمنتج</span>
                                   </button>
                                 )}
                               </div>
@@ -982,19 +1097,19 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* Modal: Add Variant / Color / Size to an Existing Product */}
+      {/* Modal: Add Multi-Size Variants to an Existing Product */}
       {isAddVariantModalOpen && activeProductForVariant && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-[#0c0c10] border border-amber-500/30 rounded-3xl p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl bg-[#0c0c10] border border-amber-500/30 rounded-3xl p-6 shadow-2xl my-8 space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
-                  <PlusCircle className="w-5 h-5" />
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                  <Palette className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">إضافة لون أو مقاس جديد للمنتج</h3>
+                  <h3 className="text-sm font-bold text-white">إضافة لون ومقاسات متعددة للمنتج</h3>
                   <p className="text-[11px] text-zinc-400 font-mono">
-                    {activeProductForVariant.model_name} ({activeProductForVariant.sku})
+                    {activeProductForVariant.model_name} ({activeProductForVariant.sku}) • السعر التلقائي: {Number(activeProductForVariant.suggested_selling_price || 0).toLocaleString()} EGP
                   </p>
                 </div>
               </div>
@@ -1014,134 +1129,259 @@ export default function InventoryPage() {
               </div>
             )}
 
-            <form onSubmit={handleSaveNewVariant} className="space-y-4">
-              {/* Color input & Color Photo Uploader */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">اللون *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newVariantColor}
-                    onChange={(e) => setNewVariantColor(e.target.value)}
-                    placeholder="مثال: Black, Navy, Beige..."
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
-                  />
+            <form onSubmit={handleSaveMultiSizeVariants} className="space-y-5">
+              {/* Step 1: Color Selection & Color Photo Upload */}
+              <div className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Palette className="w-3.5 h-3.5" />
+                    <span>1. تحديد اللون وصورته</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomColorInput(!isCustomColorInput)
+                      setCustomColorText('')
+                    }}
+                    className="text-[11px] text-amber-400 hover:underline font-semibold"
+                  >
+                    {isCustomColorInput ? '← العودة لقائمة الألوان القياسية' : '+ كتابة لون مخصص غير موجود'}
+                  </button>
                 </div>
 
-                {/* Color Photo Uploader */}
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">صورة هذا اللون (مضغوطة تلقائياً)</label>
-                  <div className="flex items-center gap-2">
-                    <label className="flex-1 px-3 py-2 bg-zinc-950 border border-dashed border-zinc-700 hover:border-amber-400 rounded-xl text-xs text-zinc-400 hover:text-amber-400 cursor-pointer flex items-center justify-center gap-1.5 transition truncate">
-                      {uploadingVariantImage ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
-                      ) : (
-                        <Camera className="w-4 h-4" />
-                      )}
-                      <span>{newVariantImageUrl ? 'تغيير الصورة' : 'رفع صورة'}</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleUploadModalVariantImage}
-                        className="hidden"
-                      />
-                    </label>
-
-                    {newVariantImageUrl && (
-                      <img
-                        src={newVariantImageUrl}
-                        alt="Preview"
-                        className="w-9 h-9 rounded-xl object-cover border border-amber-400/50 shrink-0"
-                      />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                  <div>
+                    {!isCustomColorInput ? (
+                      <div>
+                        <label className="block text-[11px] text-zinc-400 mb-1">اختر من قائمة الألوان القياسية *</label>
+                        <select
+                          value={selectedColorName}
+                          onChange={(e) => {
+                            if (e.target.value === '__custom__') {
+                              setIsCustomColorInput(true)
+                              setCustomColorText('')
+                            } else {
+                              setSelectedColorName(e.target.value)
+                            }
+                          }}
+                          className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                        >
+                          {LUXURY_COLOR_PRESETS.map((c) => (
+                            <option key={c.name} value={c.name}>
+                              {c.name} ({c.labelAr})
+                            </option>
+                          ))}
+                          <option value="__custom__">+ لون مخصص جديد...</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-[11px] text-zinc-400 mb-1">اكتب اسم اللون المخصص *</label>
+                        <input
+                          type="text"
+                          required
+                          autoFocus
+                          value={customColorText}
+                          onChange={(e) => setCustomColorText(e.target.value)}
+                          placeholder="مثال: Emerald Green, Pastel Pink..."
+                          className="w-full px-3 py-2.5 bg-zinc-900 border border-amber-400/50 rounded-xl text-xs text-white focus:outline-none"
+                        />
+                      </div>
                     )}
+                  </div>
+
+                  {/* Color Photo Uploader */}
+                  <div>
+                    <label className="block text-[11px] text-zinc-400 mb-1">صورة هذا اللون (مضغوطة تلقائياً لـ WebP)</label>
+                    <div className="flex items-center gap-2">
+                      <label className="flex-1 px-3 py-2.5 bg-zinc-900 border border-dashed border-zinc-700 hover:border-amber-400 rounded-xl text-xs text-zinc-400 hover:text-amber-400 cursor-pointer flex items-center justify-center gap-1.5 transition truncate">
+                        {uploadingVariantImage ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                        ) : (
+                          <Camera className="w-4 h-4" />
+                        )}
+                        <span>{variantImageUrl ? 'تغيير الصورة' : 'رفع صورة اللون'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleUploadModalVariantImage}
+                          className="hidden"
+                        />
+                      </label>
+
+                      {variantImageUrl && (
+                        <div className="relative group shrink-0">
+                          <img
+                            src={variantImageUrl}
+                            alt="Preview"
+                            className="w-10 h-10 rounded-xl object-cover border border-amber-400/50"
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Size Selection */}
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1">المقاس *</label>
-                <div className="flex items-center gap-1.5 flex-wrap mb-2">
-                  {['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', 'Free Size', 'Standard'].map((sz) => (
-                    <button
-                      key={sz}
-                      type="button"
-                      onClick={() => setNewVariantSize(sz)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition ${
-                        newVariantSize === sz
-                          ? 'bg-amber-400 text-zinc-950 shadow'
-                          : 'bg-zinc-950 border border-zinc-800 text-zinc-300 hover:border-zinc-700'
-                      }`}
-                    >
-                      {sz}
-                    </button>
-                  ))}
+              {/* Step 2: Multi-Size Selection */}
+              <div className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>2. اختر المقاسات المتاحة لهذا اللون (تحديد متعدد بنقرة واحدة)</span>
+                  </label>
+                  <span className="text-[11px] text-zinc-400 font-mono font-bold">
+                    {Object.keys(selectedSizesMap).length} مقاسات مختارة
+                  </span>
                 </div>
-                <input
-                  type="text"
-                  required
-                  value={newVariantSize}
-                  onChange={(e) => setNewVariantSize(e.target.value)}
-                  placeholder="أو اكتب مقاساً مخصصاً (مثال: 42, 100ml...)"
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
-                />
-              </div>
 
-              {/* Initial Quantity & Price Override */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">الرصيد المتاح حالياً *</label>
+                {/* Size Pills */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {STANDARD_SIZES_PRESETS.map((sz) => {
+                    const isSelected = !!selectedSizesMap[sz]
+                    return (
+                      <button
+                        key={sz}
+                        type="button"
+                        onClick={() => toggleSizeSelection(sz)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition flex items-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-zinc-950 shadow-md shadow-amber-500/20 ring-2 ring-amber-400/50'
+                            : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        {isSelected ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5 opacity-40" />}
+                        <span>{sz}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Custom Size Input */}
+                <div className="flex items-center gap-2 pt-1">
                   <input
-                    type="number"
-                    min="0"
-                    required
-                    value={newVariantQty}
-                    onChange={(e) => setNewVariantQty(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white font-mono font-bold focus:outline-none focus:border-amber-400"
+                    type="text"
+                    value={customSizeInput}
+                    onChange={(e) => setCustomSizeInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCustomSizeToSelection())}
+                    placeholder="أضف مقاساً آخر (مثال: 46 أو 50ml)..."
+                    className="flex-1 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
                   />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">سعر بيع مخصص (اختياري)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder={`الافتراضي: ${activeProductForVariant.suggested_selling_price} EGP`}
-                    value={newVariantPriceOverride}
-                    onChange={(e) => setNewVariantPriceOverride(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-amber-400"
-                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCustomSizeToSelection}
+                    className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold transition"
+                  >
+                    + إضافة مقاس
+                  </button>
                 </div>
               </div>
 
-              {/* Barcode */}
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1">الباركود الفرعي (اختياري)</label>
-                <input
-                  type="text"
-                  value={newVariantBarcode}
-                  onChange={(e) => setNewVariantBarcode(e.target.value)}
-                  placeholder="اتركه فارغاً لإنشاء باركود تلقائي"
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-amber-400"
-                />
-              </div>
+              {/* Step 3: Quantities and Barcodes for each selected size */}
+              {Object.keys(selectedSizesMap).length > 0 && (
+                <div className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5" />
+                      <span>3. كميات المخزون الافتتاحية للمقاسات المختارة</span>
+                    </label>
+                    <span className="text-[11px] text-zinc-400">
+                      السعر تلقائي: {Number(activeProductForVariant.suggested_selling_price || 0).toLocaleString()} EGP
+                    </span>
+                  </div>
 
-              <div className="flex items-center gap-2.5 pt-3 border-t border-zinc-800">
+                  <div className="rounded-xl border border-zinc-800/80 overflow-hidden">
+                    <table className="w-full text-xs text-start">
+                      <thead className="bg-zinc-900/90 text-zinc-400 text-[10px] uppercase">
+                        <tr>
+                          <th className="p-2.5 text-start">المقاس</th>
+                          <th className="p-2.5 text-start">الـ SKU المشتق</th>
+                          <th className="p-2.5 text-center">الرصيد المتوفر *</th>
+                          <th className="p-2.5 text-start">الباركود الفرعي (اختياري)</th>
+                          <th className="p-2.5 text-center">إلغاء</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800/50">
+                        {Object.values(selectedSizesMap).map((item) => {
+                          const colorText = isCustomColorInput ? customColorText.trim() || 'COLOR' : selectedColorName
+                          const colorCode = colorText.replace(/\s+/g, '').toUpperCase()
+                          const derivedSku = `${activeProductForVariant.sku}-${colorCode}-${item.size}`
+
+                          return (
+                            <tr key={item.size} className="hover:bg-zinc-900/30">
+                              <td className="p-2.5">
+                                <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 font-mono font-bold border border-amber-500/20">
+                                  {item.size}
+                                </span>
+                              </td>
+
+                              <td className="p-2.5 font-mono text-zinc-300 font-bold">
+                                {derivedSku}
+                              </td>
+
+                              <td className="p-2.5 text-center">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={item.quantity}
+                                  onChange={(e) => handleUpdateSizeQty(item.size, Number(e.target.value) || 0)}
+                                  className="w-24 px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-center font-mono font-bold text-white focus:outline-none focus:border-amber-400"
+                                />
+                              </td>
+
+                              <td className="p-2.5">
+                                <input
+                                  type="text"
+                                  value={item.barcode}
+                                  onChange={(e) =>
+                                    setSelectedSizesMap((prev) => ({
+                                      ...prev,
+                                      [item.size]: { ...prev[item.size], barcode: e.target.value },
+                                    }))
+                                  }
+                                  placeholder="تلقائي..."
+                                  className="w-full px-2 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg font-mono text-zinc-300 text-xs focus:outline-none focus:border-amber-400"
+                                />
+                              </td>
+
+                              <td className="p-2.5 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSizeSelection(item.size)}
+                                  className="text-zinc-500 hover:text-red-400 transition"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3 pt-3 border-t border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setIsAddVariantModalOpen(false)}
-                  className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-semibold rounded-xl"
+                  className="flex-1 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-semibold rounded-xl"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
-                  disabled={addingVariantSaving || uploadingVariantImage}
-                  className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  disabled={addingVariantSaving || uploadingVariantImage || Object.keys(selectedSizesMap).length === 0}
+                  className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {addingVariantSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  <span>{addingVariantSaving ? 'جاري الحفظ...' : 'حفظ وإضافة للمصفوفة'}</span>
+                  <span>
+                    {addingVariantSaving
+                      ? 'جاري حفظ المقاسات...'
+                      : `حفظ وإضافة كافة المقاسات (${Object.keys(selectedSizesMap).length}) للمصفوفة`}
+                  </span>
                 </button>
               </div>
             </form>
@@ -1225,7 +1465,16 @@ export default function InventoryPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('brand')} *</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-semibold text-zinc-300">{t('brand')} *</label>
+                      <button
+                        type="button"
+                        onClick={() => setIsQuickBrandModalOpen(true)}
+                        className="text-[11px] text-amber-400 hover:underline font-bold"
+                      >
+                        + ماركة جديدة
+                      </button>
+                    </div>
                     <select
                       value={form.brand}
                       onChange={(e) => setForm({ ...form, brand: e.target.value })}
@@ -1560,6 +1809,50 @@ export default function InventoryPage() {
                   className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 disabled:opacity-50"
                 >
                   {saving ? t('loading') : 'حفظ المنتج ومصفوفة المتغيرات'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Quick Add Brand */}
+      {isQuickBrandModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[#0c0c10] border border-amber-500/30 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+              <h3 className="text-sm font-bold text-white">إضافة ماركة جديدة سريعة</h3>
+              <button onClick={() => setIsQuickBrandModalOpen(false)} className="text-zinc-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateQuickBrand} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">اسم الماركة *</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={quickBrandName}
+                  onChange={(e) => setQuickBrandName(e.target.value)}
+                  placeholder="مثال: Balenciaga, Yves Saint Laurent..."
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickBrandModalOpen(false)}
+                  className="flex-1 py-2 bg-zinc-900 text-zinc-300 text-xs font-semibold rounded-xl"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={quickBrandSaving}
+                  className="flex-1 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs rounded-xl shadow"
+                >
+                  {quickBrandSaving ? 'جاري الحفظ...' : 'حفظ الماركة'}
                 </button>
               </div>
             </form>
