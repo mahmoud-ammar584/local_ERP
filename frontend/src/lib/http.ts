@@ -89,3 +89,43 @@ export async function fetchJson<T = unknown>(
   if (res.status === 204) return {} as T
   return res.json() as Promise<T>
 }
+
+export async function fetchFormData<T = unknown>(
+  url: string,
+  formData: FormData
+): Promise<T> {
+  const token = getToken()
+  const targetUrl = resolveApiUrl(url)
+
+  const headers: Record<string, string> = {}
+  if (token) {
+    headers['Authorization'] = `Token ${token}`
+  }
+
+  const res = await fetch(targetUrl, {
+    method: 'POST',
+    headers,
+    body: formData,
+  })
+
+  if (res.status === 401) {
+    clearSession()
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      window.location.href = '/login'
+    }
+    throw new ApiError(401, 'Session expired. Please log in again.')
+  }
+
+  if (!res.ok) {
+    let message = `Request failed with status ${res.status}`
+    try {
+      const body = await res.json()
+      if (body.error) message = body.error
+      else if (body.detail) message = body.detail
+    } catch {}
+    throw new ApiError(res.status, message)
+  }
+
+  return res.json() as Promise<T>
+}
+

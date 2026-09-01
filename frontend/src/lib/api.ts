@@ -1,4 +1,4 @@
-import { fetchJson } from './http'
+import { fetchJson, fetchFormData } from './http'
 
 // --- Types ---
 
@@ -37,6 +37,12 @@ export interface TopCustomerItem {
   total_profit: number
 }
 
+export interface ProductColorSummary {
+  color: string
+  image_url?: string
+  count: number
+}
+
 export interface ProductVariant {
   id: number
   product?: number
@@ -45,6 +51,10 @@ export interface ProductVariant {
   sku_suffix: string
   full_sku?: string
   barcode?: string
+  image?: string
+  image_url?: string
+  effective_image_url?: string
+  price_override?: number
   current_quantity?: number
   stock_quantity?: number
   effective_price?: number
@@ -53,6 +63,8 @@ export interface ProductVariant {
   brand_id?: number
   category_name?: string
   suggested_selling_price?: number
+  is_exact_variant?: boolean
+  all_variants?: ProductVariant[]
 }
 
 export interface Product {
@@ -67,11 +79,15 @@ export interface Product {
   supplier?: number
   currency?: number
   season?: string
+  image?: string
+  image_url?: string
+  primary_image_url?: string
   cost_foreign?: number
   cost_local?: number
   suggested_selling_price: number
   min_alert_quantity: number
   variants: ProductVariant[]
+  colors?: ProductColorSummary[]
   total_stock?: number
   current_quantity?: number
   created_at: string
@@ -102,6 +118,7 @@ export interface StockAuditItem {
   category_name?: string
   color: string
   size: string
+  image_url?: string
   barcode?: string
   effective_price?: number
   expected_quantity: number
@@ -149,6 +166,9 @@ export interface SalesItem {
   variant: number
   variant_sku?: string
   product_name?: string
+  product_image_url?: string
+  color?: string
+  size?: string
   quantity_sold: number
   unit_price: number
   item_discount_percentage?: number
@@ -171,6 +191,8 @@ export interface SalesTransaction {
   remaining_amount: number
   transaction_date: string
   created_at?: string
+  created_by?: number
+  created_by_username?: string
   created_by_name?: string
   lines?: any[]
   items?: SalesItem[]
@@ -327,6 +349,12 @@ export const createProduct = (data: Record<string, unknown>) =>
     method: 'POST',
     body: JSON.stringify(data),
   })
+
+export const uploadProductImage = (file: File) => {
+  const formData = new FormData()
+  formData.append('image', file)
+  return fetchFormData<{ message: string; url: string; path: string }>('/api/inventory/products/upload-image/', formData)
+}
 
 export const updateProduct = (id: number, data: Record<string, unknown>) =>
   fetchJson<Product>(`/api/inventory/products/${id}/`, {

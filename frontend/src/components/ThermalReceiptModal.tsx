@@ -186,8 +186,8 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptProps> = ({
               <span className="font-semibold">{transaction.customer_name || (language === 'ar' ? 'عميل نقدي' : 'Walk-in')}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-zinc-600">{language === 'ar' ? 'الكاشير:' : 'Cashier:'}</span>
-              <span>{transaction.created_by_name || 'Staff'}</span>
+              <span className="text-zinc-600">{language === 'ar' ? 'الكاشير / القائم بالعملية:' : 'Cashier / User:'}</span>
+              <span className="font-bold font-mono">{transaction.created_by_username || transaction.created_by_name || 'Staff'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-zinc-600">{language === 'ar' ? 'طريقة الدفع:' : 'Payment:'}</span>

@@ -40,6 +40,37 @@ class ProductViewSet(AuditLogMixin, TenantScopedViewSetMixin, viewsets.ModelView
             return ProductCreateSerializer
         return ProductListSerializer
 
+    @action(detail=False, methods=['post'], url_path='upload-image')
+    def upload_image(self, request):
+        """
+        Upload and auto-compress a product or variant image to WebP format.
+        """
+        image_file = request.FILES.get('image')
+        if not image_file:
+            return response.Response({'error': 'No image file provided in request'}, status=400)
+
+        from .image_optimizer import compress_and_optimize_image
+        from django.core.files.storage import default_storage
+        from django.conf import settings
+        import uuid
+
+        optimized_file = compress_and_optimize_image(image_file)
+        if not optimized_file:
+            return response.Response({'error': 'Failed to process image'}, status=400)
+
+        # Generate unique storage path
+        ext = 'webp'
+        unique_name = f"variants/{uuid.uuid4().hex[:12]}_{getattr(optimized_file, 'name', 'img.webp')}"
+        saved_path = default_storage.save(unique_name, optimized_file)
+        media_url = settings.MEDIA_URL if settings.MEDIA_URL.startswith('/') else f"/{settings.MEDIA_URL}"
+        file_url = f"{media_url.rstrip('/')}/{saved_path}"
+
+        return response.Response({
+            'message': 'Image uploaded and compressed successfully',
+            'url': file_url,
+            'path': saved_path
+        })
+
     @action(detail=False, methods=['get'])
     def lookup(self, request):
         """
@@ -68,8 +99,11 @@ class ProductViewSet(AuditLogMixin, TenantScopedViewSetMixin, viewsets.ModelView
             Q(_full_sku__iexact=query) | Q(barcode__iexact=query)
         ).first()
 
+        is_exact_variant = True
+
         # 2. If not found, try base product SKU or base product barcode
         if not variant:
+            is_exact_variant = False
             variant = variant_qs.filter(
                 Q(product__sku__iexact=query) | Q(product__barcode__iexact=query)
             ).order_by('id').first()
@@ -78,7 +112,19 @@ class ProductViewSet(AuditLogMixin, TenantScopedViewSetMixin, viewsets.ModelView
             return response.Response({'error': f'No product found matching "{query}"'}, status=404)
 
         serializer = ProductVariantSerializer(variant)
-        return response.Response(serializer.data)
+        data = serializer.data
+        data['is_exact_variant'] = is_exact_variant
+
+        # Attach sibling variants of the product
+        all_variants = (
+            ProductVariant.objects
+            .filter(product_id=variant.product_id, is_active=True)
+            .select_related('product', 'product__brand')
+            .prefetch_related('stock')
+        )
+        data['all_variants'] = ProductVariantSerializer(all_variants, many=True).data
+
+        return response.Response(data)
 
     @action(detail=False, methods=['post'], url_path='adjust-stock')
     def adjust_stock(self, request):

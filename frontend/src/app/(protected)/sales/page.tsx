@@ -13,6 +13,7 @@ import {
   lookupProductBySku,
   getStoreInfo,
   Product,
+  ProductVariant,
   Customer,
   PaymentMethod,
   TaxRate,
@@ -51,6 +52,10 @@ import {
   Phone,
   User,
   ChevronDown,
+  Layers,
+  Image as ImageIcon,
+  CheckCircle,
+  Shirt,
 } from 'lucide-react'
 
 interface CartItem {
@@ -65,6 +70,7 @@ interface CartItem {
   brandName?: string
   color?: string
   size?: string
+  imageUrl?: string
 }
 
 export default function SalesPage() {
@@ -102,187 +108,110 @@ export default function SalesPage() {
   const [quickCustomerAddress, setQuickCustomerAddress] = useState('')
   const [savingQuickCustomer, setSavingQuickCustomer] = useState(false)
 
-  // Quick Barcode Scanning State
+  // Fast Barcode Scanner input & UI
   const [barcodeInput, setBarcodeInput] = useState('')
   const [isScanning, setIsScanning] = useState(false)
-  const [soundEnabled, setSoundEnabled] = useState(true)
   const [scanToast, setScanToast] = useState<string | null>(null)
+  const [soundEnabled, setSoundEnabled] = useState(true)
   const scannerInputRef = useRef<HTMLInputElement>(null)
 
-  // Label Print Modal State
+  // Variant Matrix Modal State (for products with multiple colors/sizes)
+  const [variantModalProduct, setVariantModalProduct] = useState<Product | null>(null)
+  const [selectedColorForModal, setSelectedColorForModal] = useState<string>('')
+
+  // History State
+  const [transactions, setTransactions] = useState<SalesTransaction[]>([])
+  const [receiptTx, setReceiptTx] = useState<any>(null)
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
+
+  // Barcode Label Modal State
   const [labelModalProduct, setLabelModalProduct] = useState<LabelProductData | null>(null)
   const [isLabelModalOpen, setIsLabelModalOpen] = useState(false)
 
-  // Transaction History State
-  const [transactions, setTransactions] = useState<SalesTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [completing, setCompleting] = useState(false)
   const [error, setError] = useState('')
-
-  // Thermal Receipt Modal State
-  const [receiptTx, setReceiptTx] = useState<any | null>(null)
-
-  // Return & Refund Modal State
-  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
-
-  async function loadInitialData() {
-    setLoading(true)
-    try {
-      const [pRes, cRes, pmRes, trRes, txRes, sRes] = await Promise.all([
-        getProducts(),
-        getCustomers(),
-        getPaymentMethods(),
-        getTaxRates(),
-        canViewSales ? getSalesTransactions() : Promise.resolve([]),
-        getStoreInfo().catch(() => null),
-      ])
-
-      const pList = Array.isArray(pRes) ? pRes : (pRes as any).results || []
-      const cList = Array.isArray(cRes) ? cRes : (cRes as any).results || []
-      const pmList = Array.isArray(pmRes) ? pmRes : (pmRes as any).results || []
-      const trList = Array.isArray(trRes) ? trRes : (trRes as any).results || []
-      const txList = Array.isArray(txRes) ? txRes : (txRes as any).results || []
-
-      setProducts(pList)
-      setCustomers(cList)
-      setPaymentMethods(pmList)
-      setTaxRates(trList)
-      setTransactions(txList)
-      if (sRes) setStoreInfo(sRes)
-
-      if (pmList.length > 0 && !selectedPaymentMethod) {
-        setSelectedPaymentMethod(String(pmList[0].id))
-      }
-    } catch (err) {
-      console.error('Failed to load sales dependencies:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   useEffect(() => {
     loadInitialData()
   }, [])
 
-  // Auto-focus scanner input when POS tab becomes active
+  // Auto focus scanner input
   useEffect(() => {
     if (activeTab === 'pos' && canAddSale) {
-      setTimeout(() => {
-        scannerInputRef.current?.focus()
-      }, 100)
+      scannerInputRef.current?.focus()
     }
   }, [activeTab, canAddSale])
 
-  // Global Keyboard Shortcuts (F2 = Focus Scanner, F9 = Checkout)
+  // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // F2: Focus Barcode Scanner
       if (e.key === 'F2') {
         e.preventDefault()
         scannerInputRef.current?.focus()
-        scannerInputRef.current?.select()
-      } else if (e.key === 'F9' || (e.ctrlKey && e.key === 'Enter')) {
+      }
+      // F9: Complete Sale
+      if (e.key === 'F9' && cart.length > 0 && !completing && canAddSale) {
         e.preventDefault()
-        if (cart.length > 0 && !completing && canAddSale) {
-          handleCheckout()
-        }
+        handleCheckout()
+      }
+      // Escape: Close dropdown or modal
+      if (e.key === 'Escape') {
+        setIsCustomerDropdownOpen(false)
+        setIsQuickCustomerModalOpen(false)
+        setVariantModalProduct(null)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [cart, completing, canAddSale, selectedCustomer, selectedPaymentMethod, transactionDiscount])
+  }, [cart, completing, canAddSale])
 
-  // Scan or SKU Submit Handler
-  const handleBarcodeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!canAddSale) {
-      if (soundEnabled) soundFx.playScanWarning()
-      setError('ليس لديك صلاحية لإتمام عمليات البيع')
-      return
-    }
-    const code = barcodeInput.trim()
-    if (!code) return
-
-    setError('')
-    setIsScanning(true)
-
+  async function loadInitialData() {
+    setLoading(true)
     try {
-      // 1. Check if the SKU/Variant is already in cart
-      const existingIdx = cart.findIndex(
-        (i) => i.sku.toLowerCase() === code.toLowerCase()
-      )
+      const [prods, custs, pms, taxes, txs, sInfo] = await Promise.all([
+        getProducts(),
+        getCustomers(),
+        getPaymentMethods(),
+        getTaxRates(),
+        getSalesTransactions(),
+        getStoreInfo().catch(() => null),
+      ])
 
-      if (existingIdx > -1) {
-        const updated = [...cart]
-        updated[existingIdx].quantity += 1
-        setCart(updated)
-        if (soundEnabled) soundFx.playScanSuccess()
-        setScanToast(`+1 ${updated[existingIdx].name} (${updated[existingIdx].sku})`)
-        setTimeout(() => setScanToast(null), 2500)
-        setBarcodeInput('')
-        return
-      }
+      const prodList = Array.isArray(prods) ? prods : (prods as any).results || []
+      const custList = Array.isArray(custs) ? custs : (custs as any).results || []
+      const pmList = Array.isArray(pms) ? pms : (pms as any).results || []
+      const taxList = Array.isArray(taxes) ? taxes : (taxes as any).results || []
+      const txList = Array.isArray(txs) ? txs : (txs as any).results || []
 
-      // 2. Lookup SKU or Barcode from backend
-      const variant = await lookupProductBySku(code)
-      if (variant) {
-        const variantId = variant.id
-        const variantSku = variant.full_sku || variant.sku_suffix || code
-        const unitPrice = Number(variant.effective_price || variant.suggested_selling_price || 0)
-        const maxStock = variant.stock_quantity ?? variant.current_quantity ?? 999
+      setProducts(prodList)
+      setCustomers(custList)
+      setPaymentMethods(pmList)
+      setTaxRates(taxList)
+      setTransactions(txList)
+      setStoreInfo(sInfo)
 
-        // Check if now found in cart by variant ID
-        const existingByIdx = cart.findIndex((i) => i.variantId === variantId)
-        if (existingByIdx > -1) {
-          const updated = [...cart]
-          updated[existingByIdx].quantity += 1
-          setCart(updated)
-        } else {
-          setCart((prev) => [
-            ...prev,
-            {
-              productId: variant.product || variant.id,
-              variantId: variantId,
-              sku: variantSku,
-              name: variant.model_name || 'Product',
-              price: unitPrice,
-              quantity: 1,
-              discount: 0,
-              maxStock: maxStock,
-              brandName: variant.brand_name,
-              color: variant.color,
-              size: variant.size,
-            },
-          ])
-        }
-
-        if (soundEnabled) soundFx.playScanSuccess()
-        setScanToast(`+1 ${variant.model_name || 'Item'} (${variantSku})`)
-        setTimeout(() => setScanToast(null), 2500)
-        setBarcodeInput('')
-      } else {
-        if (soundEnabled) soundFx.playScanWarning()
-        setError(language === 'ar' ? `لم يتم العثور على صنف بالرمز "${code}"` : `No item found for barcode "${code}"`)
-      }
+      const defPm = pmList.find((p: any) => p.is_default) || pmList[0]
+      if (defPm) setSelectedPaymentMethod(String(defPm.id))
     } catch (err: any) {
-      if (soundEnabled) soundFx.playScanWarning()
-      setError(err.message || `No product found for SKU / Barcode "${code}"`)
+      setError(err.message || 'Failed to load initial data')
     } finally {
-      setIsScanning(false)
-      scannerInputRef.current?.focus()
+      setLoading(false)
     }
   }
 
-  // Cart operations
-  const addToCart = (product: Product, variantIndex = 0) => {
+  // Add specific variant to cart
+  const addVariantToCart = (product: Product, variant: ProductVariant) => {
     if (!canAddSale) {
       alert('ليس لديك صلاحية لإتمام عمليات البيع')
       return
     }
-    const variant = product.variants?.[variantIndex]
-    const variantId = variant ? variant.id : product.id
-    const variantSku = variant?.full_sku || variant?.sku_suffix || product.sku || ''
-    const availableStock = variant?.stock_quantity ?? variant?.current_quantity ?? 999
-    const price = Number(variant?.effective_price || product.suggested_selling_price || 0)
+    const variantId = variant.id
+    const variantSku = variant.full_sku || `${product.sku}${variant.sku_suffix}`
+    const availableStock = variant.stock_quantity ?? variant.current_quantity ?? 999
+    const price = Number(variant.effective_price || product.suggested_selling_price || 0)
+    const imageUrl = variant.effective_image_url || variant.image_url || product.primary_image_url || product.image_url
 
     const existingIndex = cart.findIndex((item) => item.variantId === variantId)
     if (existingIndex > -1) {
@@ -302,14 +231,161 @@ export default function SalesPage() {
           discount: 0,
           maxStock: availableStock,
           brandName: product.brand_name,
-          color: variant?.color,
-          size: variant?.size,
+          color: variant.color,
+          size: variant.size,
+          imageUrl: imageUrl,
+        },
+      ])
+    }
+
+    if (soundEnabled) soundFx.playScanSuccess()
+    setScanToast(`+1 ${product.model_name} (${variant.color} / ${variant.size})`)
+    setTimeout(() => setScanToast(null), 2500)
+    setVariantModalProduct(null)
+  }
+
+  // Handle Product Card click in Catalog
+  const handleProductCardClick = (product: Product) => {
+    const variants = product.variants || []
+    if (variants.length === 1) {
+      // Direct add
+      addVariantToCart(product, variants[0])
+    } else if (variants.length > 1) {
+      // Open Variant Selector Modal
+      setVariantModalProduct(product)
+      setSelectedColorForModal(variants[0].color || '')
+    } else {
+      // Fallback
+      addToCartLegacy(product)
+    }
+  }
+
+  const addToCartLegacy = (product: Product) => {
+    const mainVariant = product.variants?.[0]
+    const variantId = mainVariant ? mainVariant.id : product.id
+    const variantSku = mainVariant?.full_sku || mainVariant?.sku_suffix || product.sku
+    const price = Number(mainVariant?.effective_price || product.suggested_selling_price || 0)
+
+    const existingIndex = cart.findIndex((item) => item.variantId === variantId)
+    if (existingIndex > -1) {
+      const updated = [...cart]
+      updated[existingIndex].quantity += 1
+      setCart(updated)
+    } else {
+      setCart([
+        ...cart,
+        {
+          productId: product.id,
+          variantId: variantId,
+          sku: variantSku,
+          name: product.model_name,
+          price: price,
+          quantity: 1,
+          discount: 0,
+          maxStock: product.current_quantity ?? 999,
+          brandName: product.brand_name,
+          color: mainVariant?.color,
+          size: mainVariant?.size,
+          imageUrl: product.primary_image_url || product.image_url,
         },
       ])
     }
     if (soundEnabled) soundFx.playScanSuccess()
   }
 
+  // Barcode / SKU Gun Rapid Scanner Handler
+  const handleBarcodeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canAddSale) {
+      alert('ليس لديك صلاحية لإتمام عمليات البيع')
+      return
+    }
+    const code = barcodeInput.trim()
+    if (!code) return
+
+    setError('')
+    setIsScanning(true)
+
+    try {
+      // 1. Check if exact SKU/variant is already in cart
+      const existingIdx = cart.findIndex(
+        (i) => i.sku.toLowerCase() === code.toLowerCase()
+      )
+
+      if (existingIdx > -1) {
+        const updated = [...cart]
+        updated[existingIdx].quantity += 1
+        setCart(updated)
+        if (soundEnabled) soundFx.playScanSuccess()
+        setScanToast(`+1 ${updated[existingIdx].name} (${updated[existingIdx].sku})`)
+        setTimeout(() => setScanToast(null), 2500)
+        setBarcodeInput('')
+        return
+      }
+
+      // 2. Lookup SKU or Barcode from backend
+      const result = await lookupProductBySku(code)
+      if (result) {
+        if (result.is_exact_variant) {
+          // Exact single variant matched
+          const variantSku = result.full_sku || result.sku_suffix || code
+          const unitPrice = Number(result.effective_price || result.suggested_selling_price || 0)
+          const maxStock = result.stock_quantity ?? result.current_quantity ?? 999
+          const imgUrl = result.effective_image_url || result.image_url
+
+          setCart((prev) => [
+            ...prev,
+            {
+              productId: result.product || result.id,
+              variantId: result.id,
+              sku: variantSku,
+              name: result.model_name || 'Product',
+              price: unitPrice,
+              quantity: 1,
+              discount: 0,
+              maxStock: maxStock,
+              brandName: result.brand_name,
+              color: result.color,
+              size: result.size,
+              imageUrl: imgUrl,
+            },
+          ])
+
+          if (soundEnabled) soundFx.playScanSuccess()
+          setScanToast(`+1 ${result.model_name || 'Item'} (${result.color} / ${result.size})`)
+          setTimeout(() => setScanToast(null), 2500)
+          setBarcodeInput('')
+        } else {
+          // Base SKU matched -> open variant selector modal
+          const prod = products.find((p) => String(p.id) === String(result.product || result.id)) || {
+            id: result.product || result.id,
+            sku: result.full_sku || code,
+            model_name: result.model_name,
+            brand_name: result.brand_name,
+            suggested_selling_price: Number(result.effective_price || 0),
+            variants: result.all_variants || [],
+          } as any
+
+          setVariantModalProduct(prod)
+          if (prod.variants && prod.variants.length > 0) {
+            setSelectedColorForModal(prod.variants[0].color || '')
+          }
+          setBarcodeInput('')
+        }
+      } else {
+        if (soundEnabled) soundFx.playScanWarning()
+        setError(language === 'ar' ? `لم يتم العثور على صنف بالرمز "${code}"` : `No item found for barcode "${code}"`)
+      }
+    } catch (err: any) {
+      if (soundEnabled) soundFx.playScanWarning()
+      setError(err.message || `No product found for SKU / Barcode "${code}"`)
+    } finally {
+      setIsScanning(false)
+      scannerInputRef.current?.focus()
+    }
+  }
+
+  // Cart operations
   const updateCartQty = (index: number, delta: number) => {
     const updated = [...cart]
     updated[index].quantity += delta
@@ -325,37 +401,7 @@ export default function SalesPage() {
     setCart(updated)
   }
 
-  // Open barcode label modal for any cart item or product
-  const handleOpenLabelModal = (item: CartItem | Product) => {
-    if (!canPrintBarcode) {
-      alert('ليس لديك صلاحية لطباعة ملصقات الباركود')
-      return
-    }
-    if ('model_name' in item) {
-      // Product
-      setLabelModalProduct({
-        model_name: item.model_name,
-        brand_name: item.brand_name,
-        sku: item.sku,
-        barcode: item.barcode,
-        price: item.suggested_selling_price,
-        current_quantity: item.current_quantity,
-      })
-    } else {
-      // CartItem
-      setLabelModalProduct({
-        model_name: item.name,
-        brand_name: item.brandName,
-        color: item.color,
-        size: item.size,
-        sku: item.sku,
-        price: item.price,
-      })
-    }
-    setIsLabelModalOpen(true)
-  }
-
-  // Calculations matching backend formulas
+  // Calculations
   const subtotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0)
   const itemDiscounts = cart.reduce(
     (acc, item) => acc + item.price * item.quantity * (item.discount / 100),
@@ -366,37 +412,18 @@ export default function SalesPage() {
   const transactionDiscountAmount = (totalAfterItemDiscounts * discountRate) / 100
   const totalDiscount = itemDiscounts + transactionDiscountAmount
 
-  // Default Tax Rate 14%
   const defaultTaxRate = (taxRates as any[]).find((t) => t.is_default) || taxRates[0]
   const taxMultiplier = defaultTaxRate ? Number(defaultTaxRate.rate || 0) : 0.14
   const calculatedTax = (totalAfterItemDiscounts - transactionDiscountAmount) * taxMultiplier
   const finalTotal = Math.max(0, totalAfterItemDiscounts - transactionDiscountAmount + calculatedTax)
 
-  // Customer Filters and Search Logic
+  // Customer Filter & Quick Create
   const selectedCustomerObj = customers.find((c) => String(c.id) === String(selectedCustomer))
-
   const filteredCustomers = customers.filter((c) => {
     if (!customerSearchQuery.trim()) return true
     const q = customerSearchQuery.toLowerCase().trim()
-    const matchName = c.name?.toLowerCase().includes(q)
-    const matchPhone = c.phone?.toLowerCase().includes(q)
-    return matchName || matchPhone
+    return c.name?.toLowerCase().includes(q) || c.phone?.toLowerCase().includes(q)
   })
-
-  const handleOpenQuickCustomerModal = (initialQuery = '') => {
-    const trimmed = initialQuery.trim()
-    if (/^[0-9+]+$/.test(trimmed)) {
-      setQuickCustomerPhone(trimmed)
-      setQuickCustomerName('')
-    } else {
-      setQuickCustomerName(trimmed)
-      setQuickCustomerPhone('')
-    }
-    setQuickCustomerEmail('')
-    setQuickCustomerAddress('')
-    setIsCustomerDropdownOpen(false)
-    setIsQuickCustomerModalOpen(true)
-  }
 
   const handleQuickCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -435,11 +462,8 @@ export default function SalesPage() {
     setError('')
     setCompleting(true)
 
-    const defaultPaymentMethod =
-      paymentMethods.find((p) => p.is_default) || paymentMethods[0]
-    const chosenMethodId = selectedPaymentMethod
-      ? Number(selectedPaymentMethod)
-      : defaultPaymentMethod?.id
+    const defaultPaymentMethod = paymentMethods.find((p) => p.is_default) || paymentMethods[0]
+    const chosenMethodId = selectedPaymentMethod ? Number(selectedPaymentMethod) : defaultPaymentMethod?.id
 
     if (!chosenMethodId) {
       setError('Please configure at least one payment method.')
@@ -490,8 +514,8 @@ export default function SalesPage() {
           </h1>
           <p className="text-xs text-zinc-400 mt-1">
             {language === 'ar'
-              ? 'نقطة البيع السريعة، الدفع بالباركود و الـ SKU، وطباعة الإيصالات الحرارية الفورية'
-              : 'Rapid barcode scanning checkout, instant VIP discounts & thermal receipt printing'}
+              ? 'نقطة البيع السريعة، مسح باركود الـ SKU الفرعي للون والمقاس، وطباعة الإيصالات الفورية'
+              : 'Rapid barcode scanning checkout with exact color/size SKU variants and instant receipt printing'}
           </p>
         </div>
 
@@ -546,14 +570,11 @@ export default function SalesPage() {
 
       {activeTab === 'pos' ? (
         <div className="space-y-4">
-          {/* Quick Barcode Scanner Bar (Always Ready) */}
+          {/* Quick Barcode Scanner Bar */}
           {canAddSale ? (
             <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-zinc-900 to-zinc-900 border border-amber-500/30 shadow-lg relative overflow-hidden">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                <form
-                  onSubmit={handleBarcodeSubmit}
-                  className="flex-1 flex items-center gap-2 relative"
-                >
+                <form onSubmit={handleBarcodeSubmit} className="flex-1 flex items-center gap-2 relative">
                   <div className="relative flex-1">
                     <div className="absolute inset-y-0 start-0 flex items-center ps-3.5 pointer-events-none text-amber-400">
                       <Barcode className="w-5 h-5 animate-pulse" />
@@ -565,8 +586,8 @@ export default function SalesPage() {
                       onChange={(e) => setBarcodeInput(e.target.value)}
                       placeholder={
                         language === 'ar'
-                          ? 'امسح الباركود بالمسدس أو اكتب SKU ثم اضغط Enter (F2 للتركيز)...'
-                          : 'Scan barcode with gun or type SKU and press Enter (Press F2 to focus)...'
+                          ? 'امسح الـ SKU الفرعي أو الباركود بالمسدس ثم اضغط Enter (F2 للتركيز)...'
+                          : 'Scan exact variant SKU or barcode with gun (Press F2 to focus)...'
                       }
                       className="w-full ps-11 pe-24 py-3 bg-zinc-950/90 border border-amber-500/40 rounded-xl text-white placeholder-zinc-500 text-xs sm:text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-400/50 shadow-inner"
                       disabled={isScanning}
@@ -595,7 +616,7 @@ export default function SalesPage() {
           ) : (
             <div className="p-3 bg-zinc-900/50 border border-zinc-800 rounded-xl flex items-center gap-2 text-zinc-400 text-xs">
               <Lock className="w-4 h-4 text-amber-400" />
-              <span>{language === 'ar' ? 'وضع العرض فقط - لا تملك صلاحية إضافة فواتير بيع' : 'View Only Mode - No permission to create sales'}</span>
+              <span>{language === 'ar' ? 'وضع العرض فقط - لا تملك صلاحية إضافة فواتير بيع' : 'View Only Mode'}</span>
             </div>
           )}
 
@@ -611,15 +632,15 @@ export default function SalesPage() {
             </div>
           )}
 
-          {/* Main Grid: Catalog / Quick Pick & Live Cart */}
+          {/* Main Grid: Catalog Quick Pick & Live Cart */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Catalog Grid */}
             <div className="lg:col-span-7 space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-bold text-zinc-300 flex items-center gap-2">
-                  <span>{language === 'ar' ? 'الكتالوج وسرعة الاختيار' : 'Product Catalog'}</span>
+                  <span>{language === 'ar' ? 'كتالوج الأصناف السريع' : 'Product Catalog'}</span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-mono">
-                    {products.length} {language === 'ar' ? 'منتج' : 'items'}
+                    {products.length} {language === 'ar' ? 'صنف' : 'items'}
                   </span>
                 </h2>
               </div>
@@ -631,52 +652,48 @@ export default function SalesPage() {
                   </div>
                 ) : (
                   products.map((product) => {
-                    const mainVariant = product.variants?.[0]
-                    const price = mainVariant?.effective_price || product.suggested_selling_price || 0
-                    const stock = mainVariant?.stock_quantity ?? mainVariant?.current_quantity ?? product.current_quantity ?? 0
+                    const variants = product.variants || []
+                    const price = product.suggested_selling_price || variants[0]?.effective_price || 0
+                    const totalStock = product.total_stock ?? variants.reduce((acc, v) => acc + (v.stock_quantity ?? v.current_quantity ?? 0), 0)
+                    const thumbUrl = product.primary_image_url || product.image_url || variants[0]?.effective_image_url
 
                     return (
                       <div
                         key={product.id}
-                        className="p-3.5 rounded-2xl bg-[#0c0c10] border border-[#1e1e26] hover:border-amber-500/40 transition group flex flex-col justify-between"
+                        onClick={() => handleProductCardClick(product)}
+                        className="p-3.5 rounded-2xl bg-[#0c0c10] border border-[#1e1e26] hover:border-amber-500/50 hover:bg-zinc-900/30 transition group flex flex-col justify-between cursor-pointer"
                       >
-                        <div className="space-y-1.5">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400/80">
-                                {product.brand_name || 'Generic'}
-                              </span>
-                              <h3 className="text-xs font-bold text-white group-hover:text-amber-400 transition line-clamp-1">
-                                {product.model_name}
-                              </h3>
+                        <div className="flex items-start gap-3">
+                          {/* Image Thumbnail */}
+                          {thumbUrl ? (
+                            <img
+                              src={thumbUrl}
+                              alt={product.model_name}
+                              className="w-12 h-12 rounded-xl object-cover border border-zinc-800 shrink-0 group-hover:scale-105 transition"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-600 shrink-0">
+                              <Shirt className="w-5 h-5" />
                             </div>
-                            <span
-                              className={`text-[10px] px-2 py-0.5 rounded-md font-mono font-bold ${
-                                stock <= 0
-                                  ? 'bg-red-500/10 text-red-400 border border-red-500/20'
-                                  : stock <= 5
-                                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                  : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              }`}
-                            >
-                              {stock} {language === 'ar' ? 'متاح' : 'in stock'}
-                            </span>
-                          </div>
+                          )}
 
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[10px] font-mono text-zinc-400 bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">
-                              {product.sku}
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400/80 block truncate">
+                              {product.brand_name || 'Brand'}
                             </span>
-                            {mainVariant?.color && (
-                              <span className="text-[10px] text-zinc-400 bg-zinc-900/60 px-1.5 py-0.5 rounded">
-                                {mainVariant.color}
+                            <h3 className="text-xs font-bold text-white group-hover:text-amber-400 transition truncate">
+                              {product.model_name}
+                            </h3>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] font-mono text-zinc-400 bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">
+                                {product.sku}
                               </span>
-                            )}
-                            {mainVariant?.size && (
-                              <span className="text-[10px] text-zinc-400 bg-zinc-900/60 px-1.5 py-0.5 rounded">
-                                {mainVariant.size}
-                              </span>
-                            )}
+                              {variants.length > 1 && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 font-bold border border-amber-500/20">
+                                  {variants.length} خيارات
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
 
@@ -684,23 +701,22 @@ export default function SalesPage() {
                           <div className="font-bold text-sm text-white font-mono">
                             {formatCurrency(price)}
                           </div>
+
                           <div className="flex items-center gap-1.5">
-                            {canPrintBarcode && (
-                              <button
-                                onClick={() => handleOpenLabelModal(product)}
-                                title={language === 'ar' ? 'طباعة باركود للمنتج' : 'Print Barcode Label'}
-                                className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-amber-400 border border-zinc-800 transition"
-                              >
-                                <Barcode className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                            <span className={`text-[10px] px-2 py-0.5 rounded-md font-mono font-bold ${
+                              totalStock <= 0
+                                ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                : totalStock <= 5
+                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            }`}>
+                              {totalStock} متاح
+                            </span>
                             <button
-                              onClick={() => addToCart(product, 0)}
-                              disabled={!canAddSale || (stock <= 0 && !(product as any).can_be_oversold)}
-                              className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500 border border-amber-500/30 text-amber-400 hover:text-zinc-950 text-xs font-bold transition flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                              type="button"
+                              className="p-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 transition"
                             >
                               <Plus className="w-3.5 h-3.5" />
-                              <span>{language === 'ar' ? 'إضافة' : 'Add'}</span>
                             </button>
                           </div>
                         </div>
@@ -718,7 +734,7 @@ export default function SalesPage() {
                   <div className="flex items-center gap-2">
                     <ShoppingCart className="w-4 h-4 text-amber-400" />
                     <h2 className="text-sm font-bold text-white">
-                      {language === 'ar' ? 'سلة المشتريات' : 'Current Cart'}
+                      {language === 'ar' ? 'سلة الفاتورة الحالية' : 'Current Cart'}
                     </h2>
                     <span className="px-2 py-0.5 text-[10px] rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold">
                       {cart.reduce((s, i) => s + i.quantity, 0)} {language === 'ar' ? 'قطع' : 'items'}
@@ -741,7 +757,7 @@ export default function SalesPage() {
                       <Barcode className="w-8 h-8 mx-auto text-zinc-600 opacity-50" />
                       <p className="text-xs">
                         {language === 'ar'
-                          ? 'السلة فارغة. امسح الباركود أو اختر من الكتالوج'
+                          ? 'السلة فارغة. امسح الـ SKU أو اختر من الكتالوج'
                           : 'Cart is empty. Scan barcode or pick from catalog.'}
                       </p>
                     </div>
@@ -751,6 +767,19 @@ export default function SalesPage() {
                         key={idx}
                         className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between gap-3 group"
                       >
+                        {/* Thumbnail Image */}
+                        {item.imageUrl ? (
+                          <img
+                            src={item.imageUrl}
+                            alt={item.name}
+                            className="w-10 h-10 rounded-lg object-cover border border-zinc-800 shrink-0"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-600 shrink-0">
+                            <Shirt className="w-4 h-4" />
+                          </div>
+                        )}
+
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <h4 className="text-xs font-bold text-white truncate">{item.name}</h4>
@@ -760,12 +789,12 @@ export default function SalesPage() {
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-zinc-500 font-mono flex items-center gap-1.5 mt-0.5">
-                            <span>{item.sku}</span>
-                            {item.color && <span>• {item.color}</span>}
-                            {item.size && <span>• {item.size}</span>}
+                          <div className="text-[10px] text-zinc-400 font-mono flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <span className="text-amber-400/90 font-bold">{item.sku}</span>
+                            {item.color && <span className="bg-zinc-900 px-1 rounded">{item.color}</span>}
+                            {item.size && <span className="bg-amber-500/10 text-amber-300 px-1 rounded font-bold">{item.size}</span>}
                           </div>
-                          <div className="text-xs font-bold text-amber-400 font-mono mt-1">
+                          <div className="text-xs font-bold text-white font-mono mt-1">
                             {formatCurrency(item.price)}
                           </div>
                         </div>
@@ -803,190 +832,97 @@ export default function SalesPage() {
                 </div>
 
                 {/* Customer & Payment Setup */}
-                <div className="space-y-3 pt-3 border-t border-zinc-800 text-xs">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {/* Searchable Customer Combobox */}
+                <div className="space-y-3 pt-3 border-t border-zinc-800">
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Customer Selector */}
                     <div className="relative">
                       <div className="flex items-center justify-between mb-1">
-                        <label className="block text-[11px] text-zinc-400 font-semibold flex items-center gap-1">
+                        <label className="text-[11px] text-zinc-400 flex items-center gap-1">
                           <User className="w-3 h-3 text-amber-400" />
                           <span>{t('customer')}</span>
                         </label>
                         <button
                           type="button"
-                          onClick={() => handleOpenQuickCustomerModal(customerSearchQuery)}
-                          className="text-[10px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 transition"
+                          onClick={() => setIsQuickCustomerModalOpen(true)}
+                          className="text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-0.5"
                         >
-                          <UserPlus className="w-3 h-3" />
-                          <span>{language === 'ar' ? '+ عميل جديد' : '+ New Customer'}</span>
+                          <UserPlus className="w-2.5 h-2.5" />
+                          <span>{language === 'ar' ? '+ عميل' : '+ New'}</span>
                         </button>
                       </div>
 
-                      {/* Selected Customer Trigger Box */}
-                      <div
+                      <button
+                        type="button"
                         onClick={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
-                        className="w-full px-2.5 py-2 bg-zinc-950 border border-zinc-800 hover:border-amber-500/40 rounded-xl text-white text-xs cursor-pointer flex items-center justify-between transition group"
+                        className="w-full px-2.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-start flex items-center justify-between text-white"
                       >
-                        <div className="flex items-center gap-1.5 truncate">
-                          {selectedCustomerObj ? (
-                            <>
-                              <span className="font-bold text-white truncate">{selectedCustomerObj.name}</span>
-                              {selectedCustomerObj.phone && (
-                                <span className="text-[10px] text-zinc-400 font-mono flex items-center gap-0.5">
-                                  <Phone className="w-2.5 h-2.5 text-amber-400" />
-                                  <span>{selectedCustomerObj.phone}</span>
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            <span className="text-zinc-400">
-                              {language === 'ar' ? 'عميل نقدي (Walk-in)' : 'Walk-in Customer'}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {selectedCustomerObj && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setSelectedCustomer('')
-                              }}
-                              className="p-1 text-zinc-500 hover:text-red-400 transition"
-                              title={language === 'ar' ? 'تحويل لعميل نقدي' : 'Clear to Walk-in'}
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          )}
-                          <ChevronDown className="w-3.5 h-3.5 text-zinc-500 group-hover:text-amber-400 transition" />
-                        </div>
-                      </div>
+                        <span className="truncate">
+                          {selectedCustomerObj ? selectedCustomerObj.name : (language === 'ar' ? 'عميل نقدي (Walk-in)' : 'Walk-in')}
+                        </span>
+                        <ChevronDown className="w-3 h-3 text-zinc-400" />
+                      </button>
 
-                      {/* Dropdown Menu */}
                       {isCustomerDropdownOpen && (
-                        <div className="absolute top-full start-0 end-0 z-30 mt-1.5 p-2 bg-[#0c0c10] border border-zinc-800 rounded-2xl shadow-2xl space-y-2">
-                          {/* Search Input by Name or Phone */}
-                          <div className="relative">
-                            <Search className="w-3.5 h-3.5 absolute inset-y-0 start-2.5 my-auto text-zinc-500" />
-                            <input
-                              type="text"
-                              autoFocus
-                              value={customerSearchQuery}
-                              onChange={(e) => setCustomerSearchQuery(e.target.value)}
-                              placeholder={language === 'ar' ? 'ابحث بالاسم أو رقم الهاتف...' : 'Search by name or phone...'}
-                              className="w-full ps-8 pe-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
-                            />
-                            {customerSearchQuery && (
-                              <button
-                                type="button"
-                                onClick={() => setCustomerSearchQuery('')}
-                                className="absolute inset-y-0 end-2.5 my-auto text-zinc-500 hover:text-white"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Quick Add Button if typed query */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenQuickCustomerModal(customerSearchQuery)}
-                            className="w-full p-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition"
+                        <div className="absolute z-30 start-0 top-full mt-1 w-full max-h-52 overflow-y-auto rounded-xl bg-zinc-950 border border-zinc-800 shadow-2xl p-1.5 space-y-1">
+                          <input
+                            type="text"
+                            placeholder="بحث بالاسم أو الهاتف..."
+                            value={customerSearchQuery}
+                            onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                            className="w-full px-2 py-1 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-white placeholder-zinc-500 focus:outline-none"
+                            autoFocus
+                          />
+                          <div
+                            onClick={() => {
+                              setSelectedCustomer('')
+                              setIsCustomerDropdownOpen(false)
+                            }}
+                            className="px-2 py-1.5 rounded hover:bg-zinc-900 cursor-pointer text-xs text-zinc-300 flex items-center justify-between"
                           >
-                            <UserPlus className="w-3.5 h-3.5" />
-                            <span>
-                              {language === 'ar'
-                                ? customerSearchQuery ? `إضافة "${customerSearchQuery}" كعميل جديد` : 'إضافة عميل جديد'
-                                : customerSearchQuery ? `Add "${customerSearchQuery}" as New Customer` : 'Add New Customer'}
-                            </span>
-                          </button>
-
-                          {/* Customers List */}
-                          <div className="max-h-48 overflow-y-auto space-y-1 pe-1">
-                            {/* Walk-in Customer Option */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedCustomer('')
-                                setIsCustomerDropdownOpen(false)
-                                setCustomerSearchQuery('')
-                              }}
-                              className={`w-full p-2 rounded-xl text-xs text-start flex items-center justify-between transition ${
-                                !selectedCustomer
-                                  ? 'bg-amber-500/15 text-amber-300 font-bold border border-amber-500/30'
-                                  : 'hover:bg-zinc-900 text-zinc-300'
-                              }`}
-                            >
-                              <span>{language === 'ar' ? 'عميل نقدي (Walk-in Customer)' : 'Walk-in Customer'}</span>
-                              {!selectedCustomer && <Check className="w-3.5 h-3.5 text-amber-400" />}
-                            </button>
-
-                            {/* Filtered Customers */}
-                            {filteredCustomers.length === 0 && customerSearchQuery ? (
-                              <div className="p-3 text-center text-zinc-500 text-[11px]">
-                                {language === 'ar' ? 'لم يتم العثور على عميل بهذا الاسم أو الرقم' : 'No customers matching search'}
-                              </div>
-                            ) : (
-                              filteredCustomers.map((c) => {
-                                const isSelected = String(c.id) === String(selectedCustomer)
-                                return (
-                                  <button
-                                    key={c.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedCustomer(String(c.id))
-                                      setIsCustomerDropdownOpen(false)
-                                      setCustomerSearchQuery('')
-                                    }}
-                                    className={`w-full p-2 rounded-xl text-xs text-start flex items-center justify-between gap-2 transition ${
-                                      isSelected
-                                        ? 'bg-amber-500/15 text-amber-300 font-bold border border-amber-500/30'
-                                        : 'hover:bg-zinc-900 text-zinc-300'
-                                    }`}
-                                  >
-                                    <div className="min-w-0 flex-1">
-                                      <div className="font-semibold text-white truncate">{c.name}</div>
-                                      {c.phone && (
-                                        <div className="text-[10px] text-zinc-400 font-mono flex items-center gap-1 mt-0.5">
-                                          <Phone className="w-2.5 h-2.5 text-amber-400" />
-                                          <span>{c.phone}</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                    {isSelected && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
-                                  </button>
-                                )
-                              })
-                            )}
+                            <span>عميل نقدي (Walk-in)</span>
+                            {!selectedCustomer && <Check className="w-3 h-3 text-amber-400" />}
                           </div>
+                          {filteredCustomers.map((c) => (
+                            <div
+                              key={c.id}
+                              onClick={() => {
+                                setSelectedCustomer(String(c.id))
+                                setIsCustomerDropdownOpen(false)
+                              }}
+                              className="px-2 py-1.5 rounded hover:bg-zinc-900 cursor-pointer text-xs text-zinc-300 flex items-center justify-between"
+                            >
+                              <div>
+                                <span className="font-bold text-white block">{c.name}</span>
+                                {c.phone && <span className="text-[10px] text-zinc-500">{c.phone}</span>}
+                              </div>
+                              {selectedCustomer === String(c.id) && <Check className="w-3 h-3 text-amber-400" />}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
 
+                    {/* Payment Method */}
                     <div>
-                      <label className="block text-[11px] text-zinc-400 mb-1">
-                        {t('paymentMethod')}
-                      </label>
+                      <label className="block text-[11px] text-zinc-400 mb-1">{t('paymentMethod')}</label>
                       <select
                         value={selectedPaymentMethod}
                         onChange={(e) => setSelectedPaymentMethod(e.target.value)}
                         className="w-full px-2.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:outline-none focus:border-amber-400"
                       >
                         {paymentMethods.map((pm) => (
-                          <option key={pm.id} value={pm.id}>
-                            {pm.name}
-                          </option>
+                          <option key={pm.id} value={pm.id}>{pm.name}</option>
                         ))}
                       </select>
                     </div>
                   </div>
 
-                  {/* Transaction Discount (RBAC Protected) */}
+                  {/* Transaction Discount */}
                   {canApplyDiscount && (
                     <div className="flex items-center justify-between p-2 rounded-xl bg-zinc-950 border border-zinc-800/80">
-                      <div className="flex items-center gap-1.5 text-zinc-400">
+                      <div className="flex items-center gap-1.5 text-zinc-400 text-xs">
                         <Tag className="w-3.5 h-3.5 text-amber-400" />
-                        <span>{language === 'ar' ? 'خصم إجمالي على الفاتورة (%)' : 'Invoice Discount (%)'}</span>
+                        <span>{language === 'ar' ? 'خصم إجمالي (%)' : 'Discount (%)'}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <input
@@ -995,9 +931,9 @@ export default function SalesPage() {
                           max="100"
                           value={transactionDiscount}
                           onChange={(e) => setTransactionDiscount(Number(e.target.value) || 0)}
-                          className="w-16 px-2 py-1 bg-zinc-900 border border-zinc-700 rounded-lg text-white text-end font-mono font-bold focus:outline-none focus:border-amber-400"
+                          className="w-16 px-2 py-1 bg-zinc-900 border border-zinc-700 rounded-lg text-white text-end font-mono font-bold focus:outline-none focus:border-amber-400 text-xs"
                         />
-                        <span className="text-zinc-500 font-mono">%</span>
+                        <span className="text-zinc-500 font-mono text-xs">%</span>
                       </div>
                     </div>
                   )}
@@ -1062,16 +998,17 @@ export default function SalesPage() {
                   <tr className="border-b border-zinc-800 bg-zinc-950/50 text-zinc-400">
                     <th className="p-4 text-start"># ID</th>
                     <th className="p-4 text-start">{t('customer')}</th>
+                    <th className="p-4 text-start">الكاشير / المستخدم</th>
                     <th className="p-4 text-start">{t('paymentMethod')}</th>
                     <th className="p-4 text-end">{t('finalTotal')}</th>
                     <th className="p-4 text-end">{t('date')}</th>
-                    <th className="p-4 text-end">Action</th>
+                    <th className="p-4 text-end">الإجراء</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/40">
                   {transactions.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-zinc-500">
+                      <td colSpan={7} className="p-8 text-center text-zinc-500">
                         {loading ? t('loading') : t('noData')}
                       </td>
                     </tr>
@@ -1080,6 +1017,11 @@ export default function SalesPage() {
                       <tr key={tx.id} className="hover:bg-zinc-900/30">
                         <td className="p-4 font-mono font-bold text-amber-400">#{tx.id}</td>
                         <td className="p-4 text-white font-semibold">{tx.customer_name || 'Walk-in Customer'}</td>
+                        <td className="p-4 font-mono font-bold text-zinc-300">
+                          <span className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800">
+                            {tx.created_by_username || tx.created_by_name || currentUser?.username || 'Staff'}
+                          </span>
+                        </td>
                         <td className="p-4 text-zinc-400">{tx.payment_method_name}</td>
                         <td className="p-4 text-end font-bold text-white">{formatCurrency(tx.final_total || tx.final_amount || 0)}</td>
                         <td className="p-4 text-end text-zinc-500 font-mono">
@@ -1115,13 +1057,115 @@ export default function SalesPage() {
         )
       )}
 
-      {/* Barcode Label Modal */}
-      {canPrintBarcode && (
-        <BarcodeLabelModal
-          isOpen={isLabelModalOpen}
-          onClose={() => setIsLabelModalOpen(false)}
-          product={labelModalProduct}
-        />
+      {/* Interactive Variant Selection Matrix Modal for POS */}
+      {variantModalProduct && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-xl bg-[#0c0c10] border border-amber-500/30 rounded-3xl p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">{variantModalProduct.model_name}</h3>
+                  <p className="text-[11px] text-zinc-400">
+                    {variantModalProduct.brand_name} • {variantModalProduct.sku}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setVariantModalProduct(null)}
+                className="p-1 text-zinc-400 hover:text-white rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Colors Switcher */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-300 block">1. اختر اللون:</label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {Array.from(new Set((variantModalProduct.variants || []).map((v) => v.color))).map((colName) => {
+                  const matchingVariant = (variantModalProduct.variants || []).find((v) => v.color === colName)
+                  const imgUrl = matchingVariant?.effective_image_url || matchingVariant?.image_url || variantModalProduct.primary_image_url
+                  const isSelected = selectedColorForModal === colName
+
+                  return (
+                    <button
+                      key={colName}
+                      type="button"
+                      onClick={() => setSelectedColorForModal(colName)}
+                      className={`p-2.5 rounded-2xl border flex items-center gap-2.5 transition text-start ${
+                        isSelected
+                          ? 'bg-amber-500/15 border-amber-400 text-white shadow-md'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                      }`}
+                    >
+                      {imgUrl ? (
+                        <img src={imgUrl} alt={colName} className="w-8 h-8 rounded-lg object-cover border border-zinc-700 shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0">
+                          <Shirt className="w-4 h-4 text-amber-400" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold block truncate">{colName}</span>
+                        <span className="text-[10px] text-zinc-500 block">انقر للتحديد</span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Sizes for Selected Color */}
+            <div className="space-y-2 pt-2">
+              <label className="text-xs font-bold text-zinc-300 block">
+                2. اختر المقاس لإضافته للسلة فوراً:
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {(variantModalProduct.variants || [])
+                  .filter((v) => !selectedColorForModal || v.color === selectedColorForModal)
+                  .map((variant) => {
+                    const qty = variant.stock_quantity ?? variant.current_quantity ?? 0
+                    const fullSku = variant.full_sku || `${variantModalProduct.sku}${variant.sku_suffix}`
+
+                    return (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        disabled={qty <= 0 && !(variantModalProduct as any).can_be_oversold}
+                        onClick={() => addVariantToCart(variantModalProduct, variant)}
+                        className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800 hover:border-amber-400 hover:bg-zinc-900 transition flex flex-col items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed group shadow-sm"
+                      >
+                        <span className="text-sm font-black text-amber-400 font-mono group-hover:scale-110 transition">
+                          {variant.size}
+                        </span>
+                        <span className="text-[10px] text-zinc-400 font-mono">
+                          {fullSku}
+                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          qty > 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                        }`}>
+                          {qty > 0 ? `${qty} متاح` : 'نفد الرصيد'}
+                        </span>
+                      </button>
+                    )
+                  })}
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setVariantModalProduct(null)}
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Thermal POS Receipt Modal */}
@@ -1140,7 +1184,7 @@ export default function SalesPage() {
         onReturnSuccess={loadInitialData}
       />
 
-      {/* Modal: Quick Add Customer (Directly from POS) */}
+      {/* Quick Add Customer Modal */}
       {isQuickCustomerModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-[#0c0c10] border border-amber-500/30 rounded-3xl p-6 shadow-2xl space-y-4">
@@ -1150,12 +1194,8 @@ export default function SalesPage() {
                   <UserPlus className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">
-                    {language === 'ar' ? 'إضافة عميل جديد سريعاً' : 'Quick Add Customer'}
-                  </h3>
-                  <p className="text-[11px] text-zinc-400">
-                    {language === 'ar' ? 'تسجيل العميل وإدراجه في الفاتورة الحالية فوراً' : 'Add and select for current checkout'}
-                  </p>
+                  <h3 className="text-sm font-bold text-white">إضافة عميل جديد سريعاً</h3>
+                  <p className="text-[11px] text-zinc-400">تسجيل العميل وإدراجه في الفاتورة الحالية فوراً</p>
                 </div>
               </div>
               <button
@@ -1169,16 +1209,14 @@ export default function SalesPage() {
 
             <form onSubmit={handleQuickCreateCustomer} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                  {language === 'ar' ? 'اسم العميل *' : 'Customer Name *'}
-                </label>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">اسم العميل *</label>
                 <input
                   type="text"
                   required
                   autoFocus
                   value={quickCustomerName}
                   onChange={(e) => setQuickCustomerName(e.target.value)}
-                  placeholder={language === 'ar' ? 'مثال: سارة أحمد' : 'e.g. Sarah Ahmed'}
+                  placeholder="مثال: سارة أحمد"
                   className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
                 />
               </div>
@@ -1186,7 +1224,7 @@ export default function SalesPage() {
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1">
                   <Phone className="w-3 h-3 text-amber-400" />
-                  <span>{language === 'ar' ? 'رقم الهاتف' : 'Phone Number'}</span>
+                  <span>رقم الهاتف</span>
                 </label>
                 <input
                   type="tel"
@@ -1197,46 +1235,20 @@ export default function SalesPage() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                  {language === 'ar' ? 'البريد الإلكتروني (اختياري)' : 'Email (Optional)'}
-                </label>
-                <input
-                  type="email"
-                  value={quickCustomerEmail}
-                  onChange={(e) => setQuickCustomerEmail(e.target.value)}
-                  placeholder="customer@example.com"
-                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                  {language === 'ar' ? 'العنوان / المدينة (اختياري)' : 'Address / City (Optional)'}
-                </label>
-                <input
-                  type="text"
-                  value={quickCustomerAddress}
-                  onChange={(e) => setQuickCustomerAddress(e.target.value)}
-                  placeholder={language === 'ar' ? 'القاهرة، المعادي...' : 'Cairo, Maadi...'}
-                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
-                />
-              </div>
-
               <div className="flex items-center gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsQuickCustomerModalOpen(false)}
                   className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-semibold rounded-xl"
                 >
-                  {t('cancel')}
+                  إلغاء
                 </button>
                 <button
                   type="submit"
                   disabled={savingQuickCustomer || !quickCustomerName.trim()}
                   className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 disabled:opacity-50"
                 >
-                  {savingQuickCustomer ? t('loading') : (language === 'ar' ? 'حفظ واختيار العميل' : 'Save & Select')}
+                  {savingQuickCustomer ? t('loading') : 'حفظ واختيار العميل'}
                 </button>
               </div>
             </form>

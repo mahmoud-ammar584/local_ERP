@@ -19,7 +19,9 @@ def generate_invoice_pdf(sale):
     
     # Header
     elements.append(Paragraph(f"INVOICE #{sale.id}", title_style))
-    elements.append(Paragraph(f"Date: {sale.transaction_date.strftime('%Y-%m-%d')}", normal_style))
+    elements.append(Paragraph(f"Date: {sale.transaction_date.strftime('%Y-%m-%d %H:%M')}", normal_style))
+    cashier_username = sale.created_by.username if sale.created_by else 'Admin'
+    elements.append(Paragraph(f"Cashier / Operator: {cashier_username}", normal_style))
     if sale.customer:
         elements.append(Paragraph(f"Customer: {sale.customer.name}", normal_style))
     elements.append(Spacer(1, 0.2 * inch))

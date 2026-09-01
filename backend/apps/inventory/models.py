@@ -35,7 +35,8 @@ class Product(models.Model):
 
     # Variant-specific attributes (size/color/gender) live on ProductVariant.
     description = models.TextField(blank=True, null=True)
-    image_url = models.URLField(blank=True, null=True)
+    image = models.ImageField(upload_to='products/', blank=True, null=True)
+    image_url = models.CharField(max_length=500, blank=True, null=True)
 
     # --- Acquisition Cost ---
     # cost_foreign = Cost in foreign currency (paid to supplier)
@@ -55,6 +56,14 @@ class Product(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
+        # Auto-compress image if new file uploaded
+        if self.image and hasattr(self.image, 'file') and not getattr(self, '_image_optimized', False):
+            from .image_optimizer import compress_and_optimize_image
+            optimized = compress_and_optimize_image(self.image)
+            if optimized:
+                self.image = optimized
+                self._image_optimized = True
+
         # --- Automatic Selling Price Calculation ---
         # Recalculate if suggested_selling_price is null or profit_margin_percentage is set.
         if not self.suggested_selling_price or self.profit_margin_percentage > 0:
@@ -94,6 +103,17 @@ class Product(models.Model):
         """
         return any(v.is_low_stock for v in self.variants.all())
 
+    @property
+    def primary_image_url(self):
+        if self.image:
+            return self.image.url
+        if self.image_url:
+            return self.image_url
+        first_variant = self.variants.filter(is_active=True).exclude(image='').first()
+        if first_variant and first_variant.image:
+            return first_variant.image.url
+        return None
+
     def __str__(self):
         return f'{self.brand.name} - {self.model_name}'
 
@@ -124,12 +144,24 @@ class ProductVariant(models.Model):
     color = models.CharField(max_length=100)
     size = models.CharField(max_length=50)
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, default='U')
+    image = models.ImageField(upload_to='variants/', blank=True, null=True, help_text="Color/Variant specific photo")
+    image_url = models.CharField(max_length=500, blank=True, null=True)
     price_override = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
         help_text="If set, overrides product's suggested_selling_price for this variant"
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(default=timezone.now)
+
+    def save(self, *args, **kwargs):
+        # Auto-compress image if new file uploaded
+        if self.image and hasattr(self.image, 'file') and not getattr(self, '_image_optimized', False):
+            from .image_optimizer import compress_and_optimize_image
+            optimized = compress_and_optimize_image(self.image)
+            if optimized:
+                self.image = optimized
+                self._image_optimized = True
+        super().save(*args, **kwargs)
 
     @property
     def full_sku(self):
@@ -138,6 +170,16 @@ class ProductVariant(models.Model):
     @property
     def effective_price(self):
         return self.price_override or self.product.suggested_selling_price
+
+    @property
+    def effective_image_url(self):
+        if self.image:
+            return self.image.url
+        if self.image_url:
+            return self.image_url
+        if self.product and self.product.image:
+            return self.product.image.url
+        return getattr(self.product, 'image_url', None)
 
     @property
     def is_low_stock(self):

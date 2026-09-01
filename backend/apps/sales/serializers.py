@@ -87,6 +87,8 @@ class SalesTransactionSerializer(serializers.ModelSerializer):
     lines = SalesItemSerializer(source='items', many=True, read_only=True)
     customer_name = serializers.CharField(source='customer.name', read_only=True, default=None)
     payment_method_name = serializers.CharField(source='payment_method.name', read_only=True, default='Cash')
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True, default=None)
+    created_by_name = serializers.SerializerMethodField()
     created_at = serializers.DateTimeField(source='transaction_date', read_only=True)
     subtotal_amount = serializers.DecimalField(source='total_amount_before_tax', max_digits=14, decimal_places=2, read_only=True)
     tax_amount = serializers.DecimalField(source='total_tax', max_digits=14, decimal_places=2, read_only=True)
@@ -97,7 +99,8 @@ class SalesTransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = SalesTransaction
         fields = [
-            'id', 'company', 'transaction_date', 'created_at',
+            'id', 'company', 'created_by', 'created_by_username', 'created_by_name',
+            'transaction_date', 'created_at',
             'customer', 'customer_name',
             'payment_method', 'payment_method_name',
             'total_amount_before_tax', 'subtotal_amount',
@@ -108,9 +111,14 @@ class SalesTransactionSerializer(serializers.ModelSerializer):
             'items', 'lines'
         ]
 
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return obj.created_by.username
+        return 'Staff'
+
     def get_discount_amount(self, obj):
-        gross = (obj.total_amount_before_tax or Decimal('0')) + (obj.total_tax or Decimal('0'))
-        return max(Decimal('0'), gross - (obj.final_amount or Decimal('0')))
+        gross = Decimal(str(obj.total_amount_before_tax or '0')) + Decimal(str(obj.total_tax or '0'))
+        return max(Decimal('0'), gross - Decimal(str(obj.final_amount or '0')))
 
 
 class SalesTransactionCreateSerializer(serializers.ModelSerializer):
@@ -215,14 +223,16 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
         validated_data.pop('items', None)
         validated_data.pop('lines', None)
         
-        # Ensure company is attached
+        # Ensure company and user are attached
         request = self.context.get('request')
         profile = getattr(getattr(request, 'user', None), 'profile', None)
         if profile and profile.company:
             validated_data['company'] = profile.company
+        if request and request.user and request.user.is_authenticated:
+            validated_data['created_by'] = request.user
 
         # Only pass valid model fields
-        valid_model_fields = {'company', 'transaction_date', 'customer', 'payment_method', 'overall_discount_percentage', 'notes'}
+        valid_model_fields = {'company', 'created_by', 'transaction_date', 'customer', 'payment_method', 'overall_discount_percentage', 'notes'}
         create_kwargs = {k: v for k, v in validated_data.items() if k in valid_model_fields}
 
         transaction = SalesTransaction.objects.create(**create_kwargs)
