@@ -2,7 +2,7 @@ import React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useLanguage } from '@/lib/i18n'
-import { getUser, hasPermission, hasAnyPermission } from '@/lib/auth'
+import { useAuth } from '@/lib/auth'
 import {
   LayoutDashboard,
   Shirt,
@@ -26,7 +26,7 @@ interface SidebarProps {
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const { t, language } = useLanguage()
-  const user = getUser()
+  const { user, hasPermission, hasAnyPermission } = useAuth()
 
   const navItems = [
     {

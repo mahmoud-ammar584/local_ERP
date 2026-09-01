@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useLanguage } from '@/lib/i18n'
 import { getUsers, getInvitations, createInvitation, deleteInvitation, updateUser } from '@/lib/api'
-import { getUser, hasPermission } from '@/lib/auth'
+import { useAuth, refreshSessionProfile, notifyAuthChange } from '@/lib/auth'
 import {
   ShieldCheck,
   Plus,
@@ -223,7 +223,7 @@ const ROLE_PRESETS: Record<string, { labelAr: string; labelEn: string; perms: Re
 
 export default function UsersPage() {
   const { t, language } = useLanguage()
-  const currentUser = getUser()
+  const { user: currentUser, hasPermission } = useAuth()
 
   const [users, setUsers] = useState<any[]>([])
   const [invitations, setInvitations] = useState<any[]>([])
@@ -354,6 +354,8 @@ export default function UsersPage() {
         role: editRole,
         permissions: editPermissions,
       })
+      await refreshSessionProfile()
+      notifyAuthChange()
       setIsEditModalOpen(false)
       loadData()
     } catch (err: any) {
@@ -586,7 +588,7 @@ export default function UsersPage() {
                       )}
                     </td>
                     <td className="p-4 text-end">
-                      {canEditUser && (
+                      {canEditUser ? (
                         <button
                           onClick={() => openEditModal(u)}
                           disabled={isOwner && currentUser?.role !== 'owner'}
@@ -595,6 +597,10 @@ export default function UsersPage() {
                           <Edit3 className="w-3.5 h-3.5 text-amber-400" />
                           <span>{t('editPermissions')}</span>
                         </button>
+                      ) : (
+                        <span className="text-[10px] text-zinc-500 font-mono italic">
+                          {language === 'ar' ? 'استعراض فقط' : 'View Only'}
+                        </span>
                       )}
                     </td>
                   </tr>

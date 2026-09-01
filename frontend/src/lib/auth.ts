@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react'
+
 export interface UserProfile {
   id: number
   username: string
@@ -13,11 +15,18 @@ export interface UserProfile {
 const TOKEN_KEY = 'funnel_auth_token'
 const USER_KEY  = 'funnel_user_profile'
 
+export function notifyAuthChange(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('funnel_auth_changed'))
+  }
+}
+
 export function setSession(token: string, user: UserProfile): void {
   if (typeof window === 'undefined') return
   localStorage.setItem(TOKEN_KEY, token)
   localStorage.setItem(USER_KEY, JSON.stringify(user))
   document.cookie = `${TOKEN_KEY}=${token}; path=/; SameSite=Lax`
+  notifyAuthChange()
 }
 
 export function getToken(): string | null {
@@ -41,17 +50,15 @@ export function clearSession(): void {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
   document.cookie = `${TOKEN_KEY}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`
+  notifyAuthChange()
 }
 
 export function isAuthenticated(): boolean {
   return !!getToken()
 }
 
-export function hasPermission(module: string, action: string): boolean {
-  const user = getUser()
+export function checkUserPermission(user: UserProfile | null, module: string, action: string): boolean {
   if (!user) return false
-  // Only the tenant Owner has permanent, unconditional full access.
-  // Store Admins and all other roles strictly follow their granular permissions matrix.
   if (user.role === 'owner') return true
   const perms = user.permissions || {}
   const modulePerms = perms[module] || []
@@ -91,13 +98,49 @@ export function hasPermission(module: string, action: string): boolean {
   return false
 }
 
-export function hasAnyPermission(module: string): boolean {
-  const user = getUser()
+export function checkUserHasAnyPermission(user: UserProfile | null, module: string): boolean {
   if (!user) return false
   if (user.role === 'owner') return true
   const perms = user.permissions || {}
   const modulePerms = perms[module] || []
   return Array.isArray(modulePerms) && modulePerms.length > 0
+}
+
+export function hasPermission(module: string, action: string): boolean {
+  return checkUserPermission(getUser(), module, action)
+}
+
+export function hasAnyPermission(module: string): boolean {
+  return checkUserHasAnyPermission(getUser(), module)
+}
+
+export function useAuth() {
+  const [user, setUser] = useState<UserProfile | null>(() => getUser())
+
+  useEffect(() => {
+    const handleAuthChange = () => {
+      setUser(getUser())
+    }
+    window.addEventListener('funnel_auth_changed', handleAuthChange)
+    window.addEventListener('storage', handleAuthChange)
+
+    // Also fetch fresh profile from backend
+    refreshSessionProfile().then((fresh) => {
+      if (fresh) setUser(fresh)
+    })
+
+    return () => {
+      window.removeEventListener('funnel_auth_changed', handleAuthChange)
+      window.removeEventListener('storage', handleAuthChange)
+    }
+  }, [])
+
+  return {
+    user,
+    isAuthenticated: !!user && !!getToken(),
+    hasPermission: (module: string, action: string) => checkUserPermission(user, module, action),
+    hasAnyPermission: (module: string) => checkUserHasAnyPermission(user, module),
+  }
 }
 
 export async function refreshSessionProfile(): Promise<UserProfile | null> {
@@ -124,6 +167,7 @@ export async function refreshSessionProfile(): Promise<UserProfile | null> {
         permissions: userData.permissions || userData.profile?.permissions || {},
       }
       localStorage.setItem(USER_KEY, JSON.stringify(userProfile))
+      notifyAuthChange()
       return userProfile
     }
   } catch (err) {
