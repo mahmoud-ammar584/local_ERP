@@ -41,6 +41,10 @@ export default function SettingsPage() {
 
   const canView = hasPermission('settings', 'view')
   const canEdit = hasPermission('settings', 'edit')
+  const canManageTax = hasPermission('settings', 'manage_tax') || canEdit
+  const canSyncRates = hasPermission('settings', 'sync_rates') || canEdit
+  const canManageBrands = hasPermission('settings', 'manage_brands') || canEdit
+  const canManageCategories = hasPermission('settings', 'manage_categories') || canEdit
 
   const [storeInfo, setStoreInfo] = useState<StoreInfo>({
     store_name: 'La Boutique Deluxe',
@@ -85,15 +89,15 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
-    if (canView || canEdit) {
+    if (canView || canEdit || canManageTax || canSyncRates || canManageBrands || canManageCategories) {
       loadData()
     }
-  }, [canView, canEdit])
+  }, [canView, canEdit, canManageTax, canSyncRates, canManageBrands, canManageCategories])
 
   const handleSaveStoreInfo = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!canEdit) {
-      alert('ليس لديك صلاحية لتعديل إعدادات المتجر')
+    if (!canEdit && !canManageTax) {
+      alert('ليس لديك صلاحية لتعديل إعدادات المتجر أو الضرائب')
       return
     }
     setSaving(true)
@@ -109,6 +113,10 @@ export default function SettingsPage() {
   }
 
   const handleSyncExchangeRates = async () => {
+    if (!canSyncRates) {
+      alert('ليس لديك صلاحية لمزامنة أسعار الصرف')
+      return
+    }
     setSyncingRates(true)
     try {
       const res = await syncLiveExchangeRates()
@@ -125,7 +133,7 @@ export default function SettingsPage() {
   const handleAddBrand = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newBrand.trim()) return
-    if (!canEdit) {
+    if (!canManageBrands) {
       alert('ليس لديك صلاحية لإضافة ماركات جديدة')
       return
     }
@@ -142,7 +150,7 @@ export default function SettingsPage() {
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newCategory.trim()) return
-    if (!canEdit) {
+    if (!canManageCategories) {
       alert('ليس لديك صلاحية لإضافة تصنيفات جديدة')
       return
     }
@@ -156,7 +164,7 @@ export default function SettingsPage() {
     }
   }
 
-  if (!canView && !canEdit) {
+  if (!canView && !canEdit && !canManageTax && !canSyncRates && !canManageBrands && !canManageCategories) {
     return (
       <div className="p-8 rounded-2xl bg-[#0c0c10] border border-red-500/30 text-center space-y-3">
         <div className="w-12 h-12 rounded-xl bg-red-500/10 text-red-400 flex items-center justify-center mx-auto">

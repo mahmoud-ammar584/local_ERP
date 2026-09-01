@@ -47,21 +47,28 @@ class Profile(models.Model):
         if not isinstance(module_perms, list):
             return False
 
-        # Direct match (e.g. 'stocktake_reconcile', 'print_barcode', 'adjust_stock')
+        # Direct match (e.g. 'stocktake_reconcile', 'manage_tax', 'sync_rates', 'manage_suppliers', etc.)
         if action in module_perms:
             return True
 
+        # If user has ANY permission in this module, allow read/view access so they can load the interface
+        if action == 'view' and len(module_perms) > 0:
+            return True
+
         # Hierarchical fallback:
-        # 'edit' grants adjust_stock, stocktake_reconcile, receive
-        if action in ['adjust_stock', 'stocktake_reconcile', 'receive'] and 'edit' in module_perms:
+        # 'edit' grants adjust_stock, stocktake_reconcile, receive, manage_tax, sync_rates, manage_brands, manage_categories, manage_suppliers, manage_debt
+        if action in [
+            'adjust_stock', 'stocktake_reconcile', 'receive', 'manage_tax', 'sync_rates',
+            'manage_brands', 'manage_categories', 'manage_suppliers', 'manage_debt'
+        ] and 'edit' in module_perms:
             return True
 
         # 'add' grants stocktake_count, stocktake_create
         if action in ['stocktake_count', 'stocktake_create'] and 'add' in module_perms:
             return True
 
-        # 'view' grants stocktake_view, print_barcode, export_csv, apply_discount
-        if action in ['stocktake_view', 'print_barcode', 'export_csv', 'apply_discount'] and 'view' in module_perms:
+        # 'view' grants stocktake_view, print_barcode, export_csv, apply_discount, view_financials
+        if action in ['stocktake_view', 'print_barcode', 'export_csv', 'apply_discount', 'view_financials'] and 'view' in module_perms:
             return True
 
         return False

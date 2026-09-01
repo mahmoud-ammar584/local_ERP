@@ -102,11 +102,15 @@ class HasModulePermission(permissions.BasePermission):
         if action == 'receive':
             return profile.has_permission('purchases', 'receive')
 
+        # Live Currency Sync Action
+        if action == 'sync_live_rates':
+            return profile.has_permission('settings', 'sync_rates') or profile.has_permission('settings', 'edit')
+
         # Customer Ledger / Payment
         if action == 'record_payment':
-            return profile.has_permission('customers', 'edit') or profile.has_permission('customers', 'add')
+            return profile.has_permission('customers', 'edit') or profile.has_permission('customers', 'add') or profile.has_permission('customers', 'manage_debt')
         if action == 'statement':
-            return profile.has_permission('customers', 'view')
+            return profile.has_permission('customers', 'view') or profile.has_permission('customers', 'manage_debt')
 
         # Generic Action Mapping
         if action in ['list', 'retrieve', 'invoice', 'statement']:

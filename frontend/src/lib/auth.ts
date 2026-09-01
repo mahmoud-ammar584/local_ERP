@@ -60,10 +60,33 @@ export function hasPermission(module: string, action: string): boolean {
   // Direct match
   if (modulePerms.includes(action)) return true
 
-  // Hierarchical fallback
-  if (['adjust_stock', 'stocktake_reconcile', 'receive'].includes(action) && modulePerms.includes('edit')) return true
+  // If user has ANY permission in this module, grant 'view' access so the page loads
+  if (action === 'view' && modulePerms.length > 0) return true
+
+  // Hierarchical fallback:
+  // 'edit' grants adjust_stock, stocktake_reconcile, receive, manage_tax, sync_rates, manage_brands, manage_categories, manage_suppliers, manage_debt
+  if (
+    [
+      'adjust_stock',
+      'stocktake_reconcile',
+      'receive',
+      'manage_tax',
+      'sync_rates',
+      'manage_brands',
+      'manage_categories',
+      'manage_suppliers',
+      'manage_debt',
+    ].includes(action) &&
+    modulePerms.includes('edit')
+  ) {
+    return true
+  }
+
+  // 'add' grants stocktake_count, stocktake_create, POS fast add
   if (['stocktake_count', 'stocktake_create'].includes(action) && modulePerms.includes('add')) return true
-  if (['stocktake_view', 'print_barcode', 'export_csv', 'apply_discount'].includes(action) && modulePerms.includes('view')) return true
+
+  // 'view' grants stocktake_view, print_barcode, export_csv, apply_discount, view_financials
+  if (['stocktake_view', 'print_barcode', 'export_csv', 'apply_discount', 'view_financials'].includes(action) && modulePerms.includes('view')) return true
 
   return false
 }
@@ -75,6 +98,38 @@ export function hasAnyPermission(module: string): boolean {
   const perms = user.permissions || {}
   const modulePerms = perms[module] || []
   return Array.isArray(modulePerms) && modulePerms.length > 0
+}
+
+export async function refreshSessionProfile(): Promise<UserProfile | null> {
+  const token = getToken()
+  if (!token || typeof window === 'undefined') return null
+  try {
+    const res = await fetch('/api/auth/me/', {
+      headers: {
+        Authorization: `Token ${token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+    if (res.ok) {
+      const userData = await res.json()
+      const userProfile: UserProfile = {
+        id: userData.id,
+        username: userData.username,
+        email: userData.email,
+        first_name: userData.first_name,
+        last_name: userData.last_name,
+        role: userData.role || userData.profile?.role || 'cashier',
+        company_id: userData.company_id || userData.company?.id || 1,
+        company_name: userData.company_name || userData.company?.name || 'Store',
+        permissions: userData.permissions || userData.profile?.permissions || {},
+      }
+      localStorage.setItem(USER_KEY, JSON.stringify(userProfile))
+      return userProfile
+    }
+  } catch (err) {
+    console.error('Failed to refresh user profile:', err)
+  }
+  return getUser()
 }
 
 export function getDefaultRoute(): string {

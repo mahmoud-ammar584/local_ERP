@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { isAuthenticated } from '@/lib/auth'
+import { isAuthenticated, refreshSessionProfile } from '@/lib/auth'
 import { Sidebar } from '@/components/Sidebar'
 import { Header } from '@/components/Header'
 
@@ -19,6 +19,8 @@ export default function ProtectedLayout({
     setMounted(true)
     if (!isAuthenticated()) {
       router.push('/login')
+    } else {
+      refreshSessionProfile()
     }
   }, [router])
 

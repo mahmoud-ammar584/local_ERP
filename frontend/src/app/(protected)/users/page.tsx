@@ -47,6 +47,7 @@ const AVAILABLE_MODULES: ModuleDef[] = [
     labelEn: 'Dashboard Analytics',
     actions: [
       { key: 'view', labelAr: 'استعراض الإحصائيات العامة والمبيعات اليومية', labelEn: 'View Key Metrics & Reports' },
+      { key: 'view_financials', labelAr: 'استعراض أرقام الأرباح والتكاليف وصافي الدخل', labelEn: 'View Profit & Margins', isDangerous: true },
     ],
   },
   {
@@ -57,6 +58,7 @@ const AVAILABLE_MODULES: ModuleDef[] = [
       { key: 'view', labelAr: 'استعراض سجل الفواتير والمبيعات السابقة', labelEn: 'View Transactions History' },
       { key: 'add', labelAr: 'إتمام البيع والدفع السريع بالماسح الضوئي', labelEn: 'POS Fast Barcode Checkout' },
       { key: 'apply_discount', labelAr: 'صلاحية منح وتطبيق خصومات إضافية', labelEn: 'Apply Custom Discounts' },
+      { key: 'refund', labelAr: 'صلاحية عمل المرتجعات واسترداد المبالغ', labelEn: 'Process Sales Returns & Refunds', isDangerous: true },
       { key: 'export_csv', labelAr: 'تصدير تقارير المبيعات إلى Excel / CSV', labelEn: 'Export Sales to CSV' },
     ],
   },
@@ -66,13 +68,14 @@ const AVAILABLE_MODULES: ModuleDef[] = [
     labelEn: 'Inventory, Products & Barcodes',
     actions: [
       { key: 'view', labelAr: 'استعراض كتالوج المنتجات والمقاسات والأرصدة', labelEn: 'View Product Catalog & Stock' },
-      { key: 'add', labelAr: 'إضافة موديلات ومقاسات وألوان جديدة', labelEn: 'Add New Products & Variants' },
+      { key: 'add', labelAr: 'إضافة موديلات ومقاسات وألوان وصور جديدة', labelEn: 'Add New Products & Variants' },
       { key: 'edit', labelAr: 'تعديل أسعار البيع والتكلفة وبيانات الموديلات', labelEn: 'Edit Products & Prices' },
       { key: 'delete', labelAr: 'حذف الأصناف والموديلات من النظام', labelEn: 'Delete Products', isDangerous: true },
-      { key: 'adjust_stock', labelAr: 'تعديل الأرصدة المخزنية يدوياً', labelEn: 'Manual Stock Balance Adjustment' },
+      { key: 'adjust_stock', labelAr: 'تعديل وتسوية الأرصدة المخزنية يدوياً', labelEn: 'Manual Stock Balance Adjustment', isDangerous: true },
       { key: 'print_barcode', labelAr: 'توليد وطباعة ملصقات الباركود والأسعار', labelEn: 'Generate & Print Barcode Labels' },
       { key: 'stocktake_view', labelAr: 'استعراض جلسات الجرد وكشف الفروقات', labelEn: 'View Stocktake Sessions' },
       { key: 'stocktake_count', labelAr: 'إجراء المسح الضوئي وتسجيل القطع بالجرد', labelEn: 'Perform Scanner Stocktake Counting' },
+      { key: 'stocktake_create', labelAr: 'بدء وإنشاء جلسة جرد مخزني جديدة', labelEn: 'Create New Stocktake Session' },
       { key: 'stocktake_reconcile', labelAr: 'اعتماد وتسوية الجرد الفعلي على قاعدة البيانات', labelEn: 'Reconcile & Apply Stocktake to Stock', isDangerous: true },
     ],
   },
@@ -82,9 +85,11 @@ const AVAILABLE_MODULES: ModuleDef[] = [
     labelEn: 'Purchases & Inward',
     actions: [
       { key: 'view', labelAr: 'استعراض أوامر الشراء والموردين', labelEn: 'View Purchase Orders' },
-      { key: 'add', labelAr: 'إنشاء أمر شراء وتوريد جديد', labelEn: 'Create Purchase Order' },
+      { key: 'add', labelAr: 'إنشاء أمر شراء وتوريد جديد بالعملة الأجنبية', labelEn: 'Create Purchase Order' },
       { key: 'edit', labelAr: 'تعديل بيانات وتكاليف أمر الشراء', labelEn: 'Edit Purchase Order' },
-      { key: 'receive', labelAr: 'استلام بضائع المورد في المخزن', labelEn: 'Receive Goods Inward' },
+      { key: 'receive', labelAr: 'استلام بضائع المورد في المخزن وتحديث الأرصدة', labelEn: 'Receive Goods Inward' },
+      { key: 'manage_suppliers', labelAr: 'إضافة وتعديل بيانات الموردين وجهات الاتصال', labelEn: 'Manage Suppliers' },
+      { key: 'delete', labelAr: 'إلغاء وحذف أوامر الشراء', labelEn: 'Delete Purchase Order', isDangerous: true },
     ],
   },
   {
@@ -93,9 +98,10 @@ const AVAILABLE_MODULES: ModuleDef[] = [
     labelEn: 'Customers & Balances',
     actions: [
       { key: 'view', labelAr: 'استعراض سجل العملاء وحسابات الديون', labelEn: 'View Customer Accounts' },
-      { key: 'add', labelAr: 'تسجيل عميل جديد', labelEn: 'Add Customer' },
+      { key: 'add', labelAr: 'تسجيل عميل جديد وفتح حساب', labelEn: 'Add Customer' },
       { key: 'edit', labelAr: 'تعديل بيانات وحدود ائتمان العميل', labelEn: 'Edit Customer Details' },
-      { key: 'delete', labelAr: 'حذف العميل', labelEn: 'Delete Customer', isDangerous: true },
+      { key: 'manage_debt', labelAr: 'استعراض كشف الحساب وتسجيل سداد الديون', labelEn: 'Manage Debt & Payments' },
+      { key: 'delete', labelAr: 'حذف العميل من النظام', labelEn: 'Delete Customer', isDangerous: true },
     ],
   },
   {
@@ -103,9 +109,11 @@ const AVAILABLE_MODULES: ModuleDef[] = [
     labelAr: 'المصروفات التشغيلية',
     labelEn: 'Expenses',
     actions: [
-      { key: 'view', labelAr: 'استعراض المصروفات والبنود', labelEn: 'View Expenses' },
-      { key: 'add', labelAr: 'تسجيل مصروف جديد', labelEn: 'Record New Expense' },
-      { key: 'delete', labelAr: 'حذف المصروف', labelEn: 'Delete Expense', isDangerous: true },
+      { key: 'view', labelAr: 'استعراض المصروفات والنفقات التشغيلية', labelEn: 'View Expenses' },
+      { key: 'add', labelAr: 'تسجيل مصروف جديد ورفع الإيصالات', labelEn: 'Record New Expense' },
+      { key: 'edit', labelAr: 'تعديل المصروفات السابقة', labelEn: 'Edit Expense' },
+      { key: 'manage_categories', labelAr: 'إضافة وتعديل بنود وتصنيفات المصروفات', labelEn: 'Manage Expense Categories' },
+      { key: 'delete', labelAr: 'حذف المصروف من النظام', labelEn: 'Delete Expense', isDangerous: true },
     ],
   },
   {
@@ -114,7 +122,11 @@ const AVAILABLE_MODULES: ModuleDef[] = [
     labelEn: 'Settings & Master Data',
     actions: [
       { key: 'view', labelAr: 'عرض بيانات المتجر والعملات والماركات', labelEn: 'View Settings' },
-      { key: 'edit', labelAr: 'تعديل إعدادات المتجر والضرائب وأسعار الصرف', labelEn: 'Edit Store Settings & Rates', isDangerous: true },
+      { key: 'edit', labelAr: 'تعديل بيانات المتجر والفرع والعنوان', labelEn: 'Edit Store Profile' },
+      { key: 'manage_tax', labelAr: 'تفعيل أو إيقاف ضريبة القيمة المضافة ونسبتها', labelEn: 'Configure VAT & Tax Rates', isDangerous: true },
+      { key: 'sync_rates', labelAr: 'تحديث ومزامنة أسعار الصرف الحية للعملات', labelEn: 'Sync Live Exchange Rates' },
+      { key: 'manage_brands', labelAr: 'إضافة وتعديل العلامات التجارية (Brands)', labelEn: 'Manage Brands' },
+      { key: 'manage_categories', labelAr: 'إضافة وتعديل تصنيفات الموديلات (Categories)', labelEn: 'Manage Categories' },
     ],
   },
   {
@@ -133,7 +145,7 @@ const AVAILABLE_MODULES: ModuleDef[] = [
     labelAr: 'سجل العمليات والأمان',
     labelEn: 'Security Audit',
     actions: [
-      { key: 'view', labelAr: 'استعراض سجل تحركات الموظفين وتفاصيل التدقيق', labelEn: 'View Audit Logs' },
+      { key: 'view', labelAr: 'استعراض سجل تحركات الموظفين وتفاصيل التدقيق الأمني', labelEn: 'View Audit Logs' },
     ],
   },
 ]
