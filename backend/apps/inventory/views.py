@@ -113,6 +113,11 @@ class ProductViewSet(AuditLogMixin, TenantScopedViewSetMixin, viewsets.ModelView
                     v = ProductVariant.objects.get(id=int(variant_id))
                     v.image_url = file_url
                     v.save(update_fields=['image_url'])
+                    # Automatically propagate this color's photo to ALL sizes of the same product and color!
+                    ProductVariant.objects.filter(
+                        product=v.product,
+                        color__iexact=v.color
+                    ).update(image_url=file_url)
                 except (ProductVariant.DoesNotExist, ValueError):
                     pass
             elif product_id:
@@ -155,6 +160,15 @@ class ProductViewSet(AuditLogMixin, TenantScopedViewSetMixin, viewsets.ModelView
                 image_url = str(item.get('image_url', '')).strip() or None
                 price_override = item.get('price_override')
                 initial_quantity = int(item.get('current_quantity') or item.get('initial_quantity') or item.get('quantity') or 0)
+
+                # Inherit image from same-color siblings if not explicitly given
+                if not image_url:
+                    sibling = ProductVariant.objects.filter(
+                        product=product,
+                        color__iexact=color
+                    ).filter(models.Q(image__isnull=False) | models.Q(image_url__isnull=False)).first()
+                    if sibling:
+                        image_url = sibling.image_url or (sibling.image.url if sibling.image else None)
 
                 sku_suffix = item.get('sku_suffix') or compute_sku_suffix(color=color, size=size, gender=gender)
 

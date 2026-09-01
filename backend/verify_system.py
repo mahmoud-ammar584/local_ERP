@@ -73,6 +73,15 @@ def test_product_variants_matrix():
 
     print(f"  [PASS] Product variants created with exact SKUs: {[v.full_sku for v in prod.variants.all()]}")
 
+    # Check same-color image inheritance
+    black_l = prod.variants.get(color="Black", size="L")
+    black_m.image_url = "https://erp.local/media/variants/black-polo.webp"
+    black_m.save()
+    assert black_l.effective_image_url == "https://erp.local/media/variants/black-polo.webp", (
+        f"Expected black_l to inherit image from black_m, got {black_l.effective_image_url}"
+    )
+    print("  [PASS] Same-color sibling variants successfully inherit color-specific photos!")
+
     # Check Serializer representation
     list_serializer = ProductListSerializer(prod)
     repr_data = list_serializer.data

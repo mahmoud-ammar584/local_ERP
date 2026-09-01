@@ -177,9 +177,25 @@ class ProductVariant(models.Model):
             return self.image.url
         if self.image_url:
             return self.image_url
-        if self.product and self.product.image:
-            return self.product.image.url
-        return getattr(self.product, 'image_url', None)
+        if self.product:
+            # Check if any other variant of the SAME product with the SAME color has an image
+            same_color_variant = (
+                self.product.variants.filter(color__iexact=self.color)
+                .exclude(id=self.id)
+                .filter(models.Q(image__isnull=False) | models.Q(image_url__isnull=False))
+                .first()
+            )
+            if same_color_variant:
+                if same_color_variant.image:
+                    return same_color_variant.image.url
+                if same_color_variant.image_url:
+                    return same_color_variant.image_url
+
+            if self.product.image:
+                return self.product.image.url
+            if self.product.image_url:
+                return self.product.image_url
+        return None
 
     @property
     def is_low_stock(self):

@@ -308,18 +308,30 @@ export default function InventoryPage() {
     setUploadingVariantId(targetVariantForUpload.variantId)
     try {
       const res = await uploadProductImage(file, targetVariantForUpload.variantId)
+      // Update local state: propagate image to all variants and colors of the same color!
       setProducts((prev) =>
         prev.map((p) => {
           if (p.id === targetVariantForUpload.productId) {
-            const updatedVariants = (p.variants || []).map((v) =>
-              v.id === targetVariantForUpload.variantId ? { ...v, effective_image_url: res.url, image_url: res.url } : v
-            )
-            return { ...p, variants: updatedVariants }
+            const targetVar = (p.variants || []).find((v) => v.id === targetVariantForUpload.variantId)
+            const targetColor = targetVar?.color?.trim().toLowerCase()
+            const updatedVariants = (p.variants || []).map((v) => {
+              if (v.id === targetVariantForUpload.variantId || (targetColor && v.color?.trim().toLowerCase() === targetColor)) {
+                return { ...v, effective_image_url: res.url, image_url: res.url }
+              }
+              return v
+            })
+            const updatedColors = (p.colors || []).map((c) => {
+              if (targetColor && c.color?.trim().toLowerCase() === targetColor) {
+                return { ...c, image_url: res.url }
+              }
+              return c
+            })
+            return { ...p, variants: updatedVariants, colors: updatedColors }
           }
           return p
         })
       )
-      showToast('تم رفع الصورة وضغطها بصيغة WebP بنجاح!')
+      showToast('تم تحديث صورة هذا اللون وتطبيقها على كافة مقاسات هذا اللون بنجاح!')
     } catch (err: any) {
       alert(err.message || 'Failed to upload image')
     } finally {
@@ -1051,7 +1063,17 @@ export default function InventoryPage() {
                                     {variants.map((v) => {
                                       const variantQty = v.stock_quantity ?? v.current_quantity ?? 0
                                       const fullSku = v.full_sku || `${p.sku}${v.sku_suffix}`
-                                      const imgUrl = v.effective_image_url || v.image_url
+                                      const sameColorSibling = variants.find(
+                                        (other) =>
+                                          other.color?.trim().toLowerCase() === v.color?.trim().toLowerCase() &&
+                                          (other.effective_image_url || other.image_url)
+                                      )
+                                      const imgUrl =
+                                        v.effective_image_url ||
+                                        v.image_url ||
+                                        sameColorSibling?.effective_image_url ||
+                                        sameColorSibling?.image_url ||
+                                        p.primary_image_url
 
                                       return (
                                         <tr key={v.id} className="hover:bg-zinc-800/40 transition">
