@@ -36,7 +36,7 @@ class Product(models.Model):
     # Variant-specific attributes (size/color/gender) live on ProductVariant.
     description = models.TextField(blank=True, null=True)
     image = models.ImageField(upload_to='products/', blank=True, null=True)
-    image_url = models.CharField(max_length=500, blank=True, null=True)
+    image_url = models.TextField(blank=True, null=True)
 
     # --- Acquisition Cost ---
     # cost_foreign = Cost in foreign currency (paid to supplier)
@@ -145,7 +145,7 @@ class ProductVariant(models.Model):
     size = models.CharField(max_length=50)
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, default='U')
     image = models.ImageField(upload_to='variants/', blank=True, null=True, help_text="Color/Variant specific photo")
-    image_url = models.CharField(max_length=500, blank=True, null=True)
+    image_url = models.TextField(blank=True, null=True)
     price_override = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
         help_text="If set, overrides product's suggested_selling_price for this variant"

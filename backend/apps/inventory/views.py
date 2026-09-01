@@ -1,5 +1,6 @@
 from rest_framework import viewsets, response, status
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.utils import timezone
@@ -40,52 +41,95 @@ class ProductViewSet(AuditLogMixin, TenantScopedViewSetMixin, viewsets.ModelView
             return ProductCreateSerializer
         return ProductListSerializer
 
-    @action(detail=False, methods=['post'], url_path='upload-image')
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='upload-image',
+        parser_classes=[MultiPartParser, FormParser, JSONParser]
+    )
     def upload_image(self, request):
         """
         Upload and auto-compress a product or variant image to WebP format.
+        Supports binary file uploads, multipart form data, or base64 data.
         """
-        image_file = request.FILES.get('image') or request.FILES.get('file')
-        if not image_file:
-            return response.Response({'error': 'No image file provided in request'}, status=400)
+        try:
+            image_file = request.FILES.get('image') or request.FILES.get('file')
+            base64_str = request.data.get('image_base64') or (request.data.get('image') if isinstance(request.data.get('image'), str) else None)
 
-        from .image_optimizer import compress_and_optimize_image
-        from django.core.files.storage import default_storage
-        from django.conf import settings
-        import uuid
+            if not image_file and not base64_str:
+                return response.Response({'error': 'No image file or base64 provided in request'}, status=400)
 
-        optimized_file = compress_and_optimize_image(image_file)
-        if not optimized_file:
-            return response.Response({'error': 'Failed to process image'}, status=400)
+            from .image_optimizer import compress_and_optimize_image
+            from django.core.files.storage import default_storage
+            from django.conf import settings
+            import uuid
+            import base64
+            import os
+            from django.core.files.base import ContentFile
 
-        ext = 'webp'
-        unique_name = f"variants/{uuid.uuid4().hex[:12]}_{getattr(optimized_file, 'name', 'img.webp')}"
-        saved_path = default_storage.save(unique_name, optimized_file)
-        media_url = settings.MEDIA_URL if settings.MEDIA_URL.startswith('/') else f"/{settings.MEDIA_URL}"
-        file_url = f"{media_url.rstrip('/')}/{saved_path}"
+            if base64_str and ',' in base64_str:
+                base64_str = base64_str.split(',', 1)[1]
 
-        variant_id = request.data.get('variant_id')
-        product_id = request.data.get('product_id')
-        if variant_id:
+            if base64_str and not image_file:
+                decoded = base64.b64decode(base64_str)
+                image_file = ContentFile(decoded, name="upload.jpg")
+
+            optimized_file = compress_and_optimize_image(image_file)
+            if not optimized_file:
+                return response.Response({'error': 'Failed to process image'}, status=400)
+
+            file_url = None
+            saved_path = None
+
+            # Try saving to storage
             try:
-                v = ProductVariant.objects.get(id=variant_id)
-                v.image_url = file_url
-                v.save(update_fields=['image_url'])
-            except ProductVariant.DoesNotExist:
-                pass
-        elif product_id:
-            try:
-                p = Product.objects.get(id=product_id)
-                p.image_url = file_url
-                p.save(update_fields=['image_url'])
-            except Product.DoesNotExist:
-                pass
+                unique_name = f"variants/{uuid.uuid4().hex[:12]}_{getattr(optimized_file, 'name', 'img.webp')}"
+                if hasattr(settings, 'MEDIA_ROOT') and settings.MEDIA_ROOT:
+                    try:
+                        os.makedirs(os.path.join(str(settings.MEDIA_ROOT), 'variants'), exist_ok=True)
+                    except Exception:
+                        pass
 
-        return response.Response({
-            'message': 'Image uploaded and compressed successfully',
-            'url': file_url,
-            'path': saved_path
-        })
+                saved_path = default_storage.save(unique_name, optimized_file)
+                media_url = settings.MEDIA_URL if settings.MEDIA_URL.startswith('/') else f"/{settings.MEDIA_URL}"
+                file_url = f"{media_url.rstrip('/')}/{saved_path}"
+            except Exception:
+                # If disk storage is unavailable (e.g. read-only serverless environment), fallback to Data URL
+                try:
+                    optimized_file.seek(0)
+                    encoded = base64.b64encode(optimized_file.read()).decode('utf-8')
+                    file_url = f"data:image/webp;base64,{encoded}"
+                    saved_path = 'data_url'
+                except Exception:
+                    file_url = None
+
+            if not file_url:
+                return response.Response({'error': 'Failed to save processed image'}, status=400)
+
+            variant_id = request.data.get('variant_id')
+            product_id = request.data.get('product_id')
+            if variant_id:
+                try:
+                    v = ProductVariant.objects.get(id=int(variant_id))
+                    v.image_url = file_url
+                    v.save(update_fields=['image_url'])
+                except (ProductVariant.DoesNotExist, ValueError):
+                    pass
+            elif product_id:
+                try:
+                    p = Product.objects.get(id=int(product_id))
+                    p.image_url = file_url
+                    p.save(update_fields=['image_url'])
+                except (Product.DoesNotExist, ValueError):
+                    pass
+
+            return response.Response({
+                'message': 'Image uploaded and compressed successfully',
+                'url': file_url,
+                'path': saved_path
+            })
+        except Exception as e:
+            return response.Response({'error': f'Image processing error: {str(e)}'}, status=400)
 
     @action(detail=True, methods=['post'], url_path='add-variant')
     def add_variant(self, request, pk=None):
