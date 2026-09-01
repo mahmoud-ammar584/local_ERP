@@ -953,10 +953,23 @@ export default function SalesPage() {
                       <span>-{formatCurrency(totalDiscount)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-zinc-400">
-                    <span>{language === 'ar' ? 'ضريبة القيمة المضافة (14%)' : 'VAT Tax (14%)'}</span>
-                    <span>+{formatCurrency(calculatedTax)}</span>
-                  </div>
+                  {isTaxActive ? (
+                    <div className="flex justify-between text-zinc-300">
+                      <span className="flex items-center gap-1.5">
+                        <span>{language === 'ar' ? `ضريبة القيمة المضافة (${configuredTaxPct}%)` : `VAT Tax (${configuredTaxPct}%)`}</span>
+                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 font-sans font-bold">مفعلة</span>
+                      </span>
+                      <span className="text-amber-400 font-bold">+{formatCurrency(calculatedTax)}</span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between text-zinc-500 text-[11px]">
+                      <span className="flex items-center gap-1.5">
+                        <span>{language === 'ar' ? 'ضريبة القيمة المضافة' : 'VAT Tax'}</span>
+                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 font-sans">معطلة من الإعدادات</span>
+                      </span>
+                      <span className="text-zinc-500 font-bold font-mono">0.00 EGP</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-base font-black text-white pt-2 border-t-2 border-zinc-800">
                     <span>{t('finalTotal')}</span>
                     <span className="text-amber-400">{formatCurrency(finalTotal)}</span>

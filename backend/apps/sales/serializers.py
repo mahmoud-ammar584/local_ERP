@@ -164,10 +164,16 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
                 pm = PaymentMethod.objects.create(name='Cash', company=company)
             data['payment_method'] = pm
 
+        from apps.settings_app.models import StoreInfo
+        store_info = StoreInfo.load(company=company)
+        is_tax_enabled = getattr(store_info, 'is_tax_enabled', True)
+
         normalized_items = []
-        default_tax = TaxRate.objects.filter(company=company).first() if company else None
-        if not default_tax:
-            default_tax = TaxRate.objects.filter(company__isnull=True).first() or TaxRate.objects.first()
+        default_tax = None
+        if is_tax_enabled:
+            default_tax = TaxRate.objects.filter(company=company).first() if company else None
+            if not default_tax:
+                default_tax = TaxRate.objects.filter(company__isnull=True).first() or TaxRate.objects.first()
         
         with transaction.atomic():
             for raw in raw_items:
@@ -191,10 +197,11 @@ class SalesTransactionCreateSerializer(serializers.ModelSerializer):
                     unit_price = target_variant.effective_price or target_variant.product.suggested_selling_price or Decimal('0')
 
                 tax_rate = None
-                if tax_rate_id:
-                    tax_rate = TaxRate.objects.filter(id=tax_rate_id).first()
-                if not tax_rate and default_tax:
-                    tax_rate = default_tax
+                if is_tax_enabled:
+                    if tax_rate_id:
+                        tax_rate = TaxRate.objects.filter(id=tax_rate_id).first()
+                    if not tax_rate and default_tax:
+                        tax_rate = default_tax
 
                 # Stock availability validation
                 stock = Stock.objects.select_for_update().filter(variant=target_variant).first()

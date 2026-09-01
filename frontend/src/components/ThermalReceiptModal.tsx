@@ -17,6 +17,8 @@ export interface ThermalReceiptProps {
     tax_registration_number?: string
     commercial_registration?: string
     legal_name?: string
+    is_tax_enabled?: boolean
+    tax_rate_percentage?: number
   } | null
 }
 
@@ -234,7 +236,11 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptProps> = ({
             </div>
             {taxAmount > 0 && (
               <div className="flex justify-between">
-                <span className="text-zinc-600">{language === 'ar' ? 'ضريبة القيمة المضافة (14%):' : 'VAT Tax (14%):'}</span>
+                <span className="text-zinc-600">
+                  {language === 'ar'
+                    ? `ضريبة القيمة المضافة (${Number(storeInfo?.tax_rate_percentage ?? 14)}%):`
+                    : `VAT Tax (${Number(storeInfo?.tax_rate_percentage ?? 14)}%):`}
+                </span>
                 <span>+{taxAmount.toFixed(2)} EGP</span>
               </div>
             )}

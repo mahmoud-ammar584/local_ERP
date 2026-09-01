@@ -39,7 +39,8 @@ def generate_invoice_pdf(sale):
     
     # Subtotal/Tax/Total
     data.append(['', '', '', 'Subtotal:', f"{sale.total_amount_before_tax:,.2f}"])
-    data.append(['', '', '', 'Tax:', f"{sale.total_tax:,.2f}"])
+    if sale.total_tax and sale.total_tax > 0:
+        data.append(['', '', '', 'Tax (VAT):', f"{sale.total_tax:,.2f}"])
     if sale.overall_discount_percentage > 0:
         data.append(['', '', '', f'Discount ({sale.overall_discount_percentage}%):', f"-{sale.final_amount - (sale.total_amount_before_tax + sale.total_tax):,.2f}"])
     data.append(['', '', '', 'Total:', f"{sale.final_amount:,.2f}"])
