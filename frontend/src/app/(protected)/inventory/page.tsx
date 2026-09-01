@@ -6,11 +6,14 @@ import { useLanguage } from '@/lib/i18n'
 import {
   getProducts,
   createProduct,
+  updateProduct,
   adjustProductStock,
   getBrands,
   createBrand,
   getCategories,
+  createCategory,
   getSuppliers,
+  createSupplier,
   getCurrencies,
   uploadProductImage,
   addVariantToProduct,
@@ -22,8 +25,8 @@ import {
   Currency,
 } from '@/lib/api'
 import { hasPermission } from '@/lib/auth'
-import { BarcodeDisplay } from '@/components/BarcodeDisplay'
 import { BarcodeLabelModal, LabelProductData } from '@/components/BarcodeLabelModal'
+import { ColorCombobox, LUXURY_COLOR_PRESETS } from '@/components/ColorCombobox'
 import {
   Shirt,
   Plus,
@@ -38,8 +41,6 @@ import {
   ClipboardCheck,
   Sparkles,
   Barcode,
-  ArrowUpRight,
-  Lock,
   ChevronDown,
   ChevronRight,
   Image as ImageIcon,
@@ -47,37 +48,15 @@ import {
   Trash2,
   Copy,
   Check,
-  Eye,
-  Sliders,
-  Maximize2,
   Camera,
   PlusCircle,
   Loader2,
   Palette,
   CheckSquare,
   Square,
+  Edit,
+  DollarSign,
 } from 'lucide-react'
-
-// Standard Luxury Color Presets
-const LUXURY_COLOR_PRESETS = [
-  { name: 'Black', hex: '#111111', labelAr: 'أسود' },
-  { name: 'White', hex: '#FFFFFF', labelAr: 'أبيض' },
-  { name: 'Off-White', hex: '#FAF9F6', labelAr: 'أوف وايت / كريمي' },
-  { name: 'Navy Blue', hex: '#0B1930', labelAr: 'كحلي / نيفي' },
-  { name: 'Beige', hex: '#D4B996', labelAr: 'بيج' },
-  { name: 'Camel', hex: '#C19A6B', labelAr: 'جملي / هافان' },
-  { name: 'Olive Green', hex: '#556B2F', labelAr: 'زيتي / أوليف' },
-  { name: 'Burgundy', hex: '#6A1A24', labelAr: 'نبيتي / بورجوندي' },
-  { name: 'Emerald Green', hex: '#097969', labelAr: 'أخضر زمردي' },
-  { name: 'Royal Blue', hex: '#1E3A8A', labelAr: 'أزرق رويال' },
-  { name: 'Charcoal Grey', hex: '#36454F', labelAr: 'رمادي غامق / فيراني' },
-  { name: 'Light Grey', hex: '#D3D3D3', labelAr: 'رمادي فاتح' },
-  { name: 'Brown', hex: '#5C4033', labelAr: 'بني' },
-  { name: 'Dusty Rose', hex: '#DCAE96', labelAr: 'وردي / كشمير' },
-  { name: 'Red', hex: '#B22222', labelAr: 'أحمر' },
-  { name: 'Gold', hex: '#D4AF37', labelAr: 'ذهبي' },
-  { name: 'Silver', hex: '#C0C0C0', labelAr: 'فضي' },
-]
 
 const STANDARD_SIZES_PRESETS = [
   'XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', 'Free Size', 'Standard',
@@ -132,10 +111,33 @@ export default function InventoryPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [currencies, setCurrencies] = useState<Currency[]>([])
 
-  // Quick Brand Add State
+  // --- Quick Creation Modals State ---
   const [isQuickBrandModalOpen, setIsQuickBrandModalOpen] = useState(false)
   const [quickBrandName, setQuickBrandName] = useState('')
   const [quickBrandSaving, setQuickBrandSaving] = useState(false)
+
+  const [isQuickCategoryModalOpen, setIsQuickCategoryModalOpen] = useState(false)
+  const [quickCategoryName, setQuickCategoryName] = useState('')
+  const [quickCategorySaving, setQuickCategorySaving] = useState(false)
+
+  const [isQuickSupplierModalOpen, setIsQuickSupplierModalOpen] = useState(false)
+  const [quickSupplierName, setQuickSupplierName] = useState('')
+  const [quickSupplierPhone, setQuickSupplierPhone] = useState('')
+  const [quickSupplierSaving, setQuickSupplierSaving] = useState(false)
+
+  // --- Quick Edit Product Modal State ---
+  const [isEditProductModalOpen, setIsEditProductModalOpen] = useState(false)
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [editProductForm, setEditProductForm] = useState({
+    model_name: '',
+    suggested_selling_price: 0,
+    cost_foreign: 0,
+    brand: '',
+    category: '',
+    supplier: '',
+    min_alert_quantity: 3,
+  })
+  const [editProductSaving, setEditProductSaving] = useState(false)
 
   // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -147,10 +149,7 @@ export default function InventoryPage() {
   // --- Add Multi-Size Variants to Existing Product Modal State ---
   const [isAddVariantModalOpen, setIsAddVariantModalOpen] = useState(false)
   const [activeProductForVariant, setActiveProductForVariant] = useState<Product | null>(null)
-  
   const [selectedColorName, setSelectedColorName] = useState('Black')
-  const [isCustomColorInput, setIsCustomColorInput] = useState(false)
-  const [customColorText, setCustomColorText] = useState('')
   
   const [selectedSizesMap, setSelectedSizesMap] = useState<Record<string, MultiSizeItem>>({
     'M': { size: 'M', quantity: 5, barcode: '' },
@@ -174,7 +173,7 @@ export default function InventoryPage() {
   // Fullscreen Image Preview
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
 
-  // Copied SKU feedback
+  // Feedback Toast
   const [copiedSku, setCopiedSku] = useState<string | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
@@ -198,7 +197,6 @@ export default function InventoryPage() {
     { id: '1', name: 'Black', imageUrl: '' },
     { id: '2', name: 'White', imageUrl: '' },
   ])
-  const [newColorInput, setNewColorInput] = useState('')
 
   const [sizesList, setSizesList] = useState<string[]>(['S', 'M', 'L', 'XL'])
   const [newSizeInput, setNewSizeInput] = useState('')
@@ -310,7 +308,6 @@ export default function InventoryPage() {
     setUploadingVariantId(targetVariantForUpload.variantId)
     try {
       const res = await uploadProductImage(file, targetVariantForUpload.variantId)
-      // Update local state immediately
       setProducts((prev) =>
         prev.map((p) => {
           if (p.id === targetVariantForUpload.productId) {
@@ -360,7 +357,7 @@ export default function InventoryPage() {
     }
   }
 
-  // --- Quick Create Brand ---
+  // --- Quick Create Actions ---
   const handleCreateQuickBrand = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!quickBrandName.trim()) return
@@ -369,6 +366,7 @@ export default function InventoryPage() {
       const newBrand = await createBrand({ name: quickBrandName.trim() })
       setBrands((prev) => [...prev, newBrand])
       setForm((f) => ({ ...f, brand: String(newBrand.id) }))
+      if (isEditProductModalOpen) setEditProductForm((f) => ({ ...f, brand: String(newBrand.id) }))
       showToast(`تم إنشاء واختيار ماركة (${newBrand.name}) بنجاح!`)
       setQuickBrandName('')
       setIsQuickBrandModalOpen(false)
@@ -379,17 +377,96 @@ export default function InventoryPage() {
     }
   }
 
+  const handleCreateQuickCategory = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!quickCategoryName.trim()) return
+    setQuickCategorySaving(true)
+    try {
+      const newCat = await createCategory({ name: quickCategoryName.trim() })
+      setCategories((prev) => [...prev, newCat])
+      setForm((f) => ({ ...f, category: String(newCat.id) }))
+      if (isEditProductModalOpen) setEditProductForm((f) => ({ ...f, category: String(newCat.id) }))
+      showToast(`تم إنشاء واختيار تصنيف (${newCat.name}) بنجاح!`)
+      setQuickCategoryName('')
+      setIsQuickCategoryModalOpen(false)
+    } catch (err: any) {
+      alert(err.message || 'Failed to create category')
+    } finally {
+      setQuickCategorySaving(false)
+    }
+  }
+
+  const handleCreateQuickSupplier = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!quickSupplierName.trim()) return
+    setQuickSupplierSaving(true)
+    try {
+      const newSup = await createSupplier({
+        name: quickSupplierName.trim(),
+        phone: quickSupplierPhone.trim() || undefined,
+      })
+      setSuppliers((prev) => [...prev, newSup])
+      setForm((f) => ({ ...f, supplier: String(newSup.id) }))
+      if (isEditProductModalOpen) setEditProductForm((f) => ({ ...f, supplier: String(newSup.id) }))
+      showToast(`تم إنشاء واختيار المورد (${newSup.name}) بنجاح!`)
+      setQuickSupplierName('')
+      setQuickSupplierPhone('')
+      setIsQuickSupplierModalOpen(false)
+    } catch (err: any) {
+      alert(err.message || 'Failed to create supplier')
+    } finally {
+      setQuickSupplierSaving(false)
+    }
+  }
+
+  // --- Quick Edit Product Details ---
+  const handleOpenEditProduct = (product: Product) => {
+    setEditingProduct(product)
+    setEditProductForm({
+      model_name: product.model_name,
+      suggested_selling_price: Number(product.suggested_selling_price) || 0,
+      cost_foreign: Number(product.cost_foreign) || 0,
+      brand: String(product.brand || ''),
+      category: String(product.category || ''),
+      supplier: String(product.supplier || ''),
+      min_alert_quantity: Number(product.min_alert_quantity) || 3,
+    })
+    setIsEditProductModalOpen(true)
+  }
+
+  const handleSaveEditProduct = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingProduct) return
+    setEditProductSaving(true)
+    try {
+      const updated = await updateProduct(editingProduct.id, {
+        model_name: editProductForm.model_name.trim(),
+        suggested_selling_price: Number(editProductForm.suggested_selling_price),
+        cost_foreign: Number(editProductForm.cost_foreign),
+        brand: Number(editProductForm.brand),
+        category: Number(editProductForm.category),
+        supplier: Number(editProductForm.supplier),
+        min_alert_quantity: Number(editProductForm.min_alert_quantity),
+      })
+      showToast(`تم تحديث بيانات الصنف (${updated.model_name}) بنجاح!`)
+      setIsEditProductModalOpen(false)
+      loadInventory()
+    } catch (err: any) {
+      alert(err.message || 'Failed to update product')
+    } finally {
+      setEditProductSaving(false)
+    }
+  }
+
   // --- Open Multi-Size Variant Modal for Existing Product ---
   const handleOpenAddVariantModal = (product: Product) => {
     setActiveProductForVariant(product)
     
-    // Default color to first color or Black
+    // Default color
     const existingColor = product.colors?.[0]?.color || product.variants?.[0]?.color || 'Black'
     setSelectedColorName(existingColor)
-    setIsCustomColorInput(false)
-    setCustomColorText('')
 
-    // Set default selected sizes (S, M, L)
+    // Set default selected sizes
     setSelectedSizesMap({
       'S': { size: 'S', quantity: 5, barcode: '' },
       'M': { size: 'M', quantity: 5, barcode: '' },
@@ -451,7 +528,7 @@ export default function InventoryPage() {
     e.preventDefault()
     if (!activeProductForVariant) return
 
-    const finalColor = isCustomColorInput ? customColorText.trim() : selectedColorName.trim()
+    const finalColor = selectedColorName.trim()
     if (!finalColor) {
       setAddVariantError('يرجى تحديد أو كتابة اسم اللون')
       return
@@ -481,7 +558,7 @@ export default function InventoryPage() {
       await addVariantToProduct(activeProductForVariant.id, batchPayload)
       showToast(`تم إنشاء ${sizesArray.length} مقاسات للون (${finalColor}) بسعر الصنف الأساسي بنجاح!`)
       setIsAddVariantModalOpen(false)
-      loadInventory() // Refresh live products
+      loadInventory()
     } catch (err: any) {
       setAddVariantError(err.message || 'فشل إضافة المقاسات')
     } finally {
@@ -514,15 +591,13 @@ export default function InventoryPage() {
     setMatrixRows(rows)
   }
 
-  function handleAddColor() {
-    if (!newColorInput.trim()) return
-    const name = newColorInput.trim()
+  function handleAddColor(colorName: string) {
+    if (!colorName.trim()) return
+    const name = colorName.trim()
     if (colorsList.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
-      setNewColorInput('')
       return
     }
     setColorsList([...colorsList, { id: String(Date.now()), name, imageUrl: '' }])
-    setNewColorInput('')
   }
 
   function handleRemoveColor(id: string) {
@@ -898,6 +973,17 @@ export default function InventoryPage() {
 
                         <td className="p-4 text-end">
                           <div className="flex items-center justify-end gap-1.5">
+                            {/* In-place Edit Product Button */}
+                            {canAdd && (
+                              <button
+                                onClick={() => handleOpenEditProduct(p)}
+                                title="تعديل بيانات الصنف الأساسية"
+                                className="p-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 rounded-lg text-[11px] transition"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
                             {canPrintBarcode && (
                               <button
                                 onClick={() => handlePrintLabel(p)}
@@ -905,7 +991,7 @@ export default function InventoryPage() {
                                 className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-zinc-800 hover:border-amber-400/40 rounded-lg text-[11px] font-semibold transition inline-flex items-center gap-1"
                               >
                                 <Tag className="w-3 h-3" />
-                                <span>طباعة باركود</span>
+                                <span>باركود</span>
                               </button>
                             )}
 
@@ -913,7 +999,7 @@ export default function InventoryPage() {
                               onClick={() => toggleExpand(p.id)}
                               className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-[11px] font-semibold transition"
                             >
-                              {isExpanded ? 'طي التفاصيل' : `المتغيرات (${variants.length})`}
+                              {isExpanded ? 'طي' : `المتغيرات (${variants.length})`}
                             </button>
                           </div>
                         </td>
@@ -942,7 +1028,7 @@ export default function InventoryPage() {
                                     className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition"
                                   >
                                     <PlusCircle className="w-4 h-4" />
-                                    <span>+ إضافة لون أو مقاسات متعددة للمنتج</span>
+                                    <span>+ إضافة لون ومقاسات متعددة للمنتج</span>
                                   </button>
                                 )}
                               </div>
@@ -979,7 +1065,6 @@ export default function InventoryPage() {
                                                   <ImageIcon className="w-3.5 h-3.5" />
                                                 </div>
                                               )}
-                                              {/* Overlay Camera upload button */}
                                               <button
                                                 type="button"
                                                 onClick={() => handleTriggerVariantImageUpload(p.id, v.id)}
@@ -1130,69 +1215,28 @@ export default function InventoryPage() {
             )}
 
             <form onSubmit={handleSaveMultiSizeVariants} className="space-y-5">
-              {/* Step 1: Color Selection & Color Photo Upload */}
+              {/* Step 1: Bilingual Searchable Color Combobox & Color Photo Upload */}
               <div className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <Palette className="w-3.5 h-3.5" />
-                    <span>1. تحديد اللون وصورته</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCustomColorInput(!isCustomColorInput)
-                      setCustomColorText('')
-                    }}
-                    className="text-[11px] text-amber-400 hover:underline font-semibold"
-                  >
-                    {isCustomColorInput ? '← العودة لقائمة الألوان القياسية' : '+ كتابة لون مخصص غير موجود'}
-                  </button>
-                </div>
+                <label className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5" />
+                  <span>1. تحديد اللون (بحث ذكي بالعربي والإنجليزي) وصورته</span>
+                </label>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
                   <div>
-                    {!isCustomColorInput ? (
-                      <div>
-                        <label className="block text-[11px] text-zinc-400 mb-1">اختر من قائمة الألوان القياسية *</label>
-                        <select
-                          value={selectedColorName}
-                          onChange={(e) => {
-                            if (e.target.value === '__custom__') {
-                              setIsCustomColorInput(true)
-                              setCustomColorText('')
-                            } else {
-                              setSelectedColorName(e.target.value)
-                            }
-                          }}
-                          className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
-                        >
-                          {LUXURY_COLOR_PRESETS.map((c) => (
-                            <option key={c.name} value={c.name}>
-                              {c.name} ({c.labelAr})
-                            </option>
-                          ))}
-                          <option value="__custom__">+ لون مخصص جديد...</option>
-                        </select>
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="block text-[11px] text-zinc-400 mb-1">اكتب اسم اللون المخصص *</label>
-                        <input
-                          type="text"
-                          required
-                          autoFocus
-                          value={customColorText}
-                          onChange={(e) => setCustomColorText(e.target.value)}
-                          placeholder="مثال: Emerald Green, Pastel Pink..."
-                          className="w-full px-3 py-2.5 bg-zinc-900 border border-amber-400/50 rounded-xl text-xs text-white focus:outline-none"
-                        />
-                      </div>
-                    )}
+                    <label className="block text-[11px] text-zinc-400 mb-1">
+                      اختر اللون أو اكتب للبحث (عربي/إنجليزي) *
+                    </label>
+                    <ColorCombobox
+                      value={selectedColorName}
+                      onChange={(color) => setSelectedColorName(color)}
+                      placeholder="ابحث بالعربي (مثل كحلي/اسود) أو English..."
+                    />
                   </div>
 
                   {/* Color Photo Uploader */}
                   <div>
-                    <label className="block text-[11px] text-zinc-400 mb-1">صورة هذا اللون (مضغوطة تلقائياً لـ WebP)</label>
+                    <label className="block text-[11px] text-zinc-400 mb-1">صورة هذا اللون (مضغوطة تلقائياً WebP)</label>
                     <div className="flex items-center gap-2">
                       <label className="flex-1 px-3 py-2.5 bg-zinc-900 border border-dashed border-zinc-700 hover:border-amber-400 rounded-xl text-xs text-zinc-400 hover:text-amber-400 cursor-pointer flex items-center justify-center gap-1.5 transition truncate">
                         {uploadingVariantImage ? (
@@ -1303,8 +1347,7 @@ export default function InventoryPage() {
                       </thead>
                       <tbody className="divide-y divide-zinc-800/50">
                         {Object.values(selectedSizesMap).map((item) => {
-                          const colorText = isCustomColorInput ? customColorText.trim() || 'COLOR' : selectedColorName
-                          const colorCode = colorText.replace(/\s+/g, '').toUpperCase()
+                          const colorCode = selectedColorName.replace(/\s+/g, '').toUpperCase()
                           const derivedSku = `${activeProductForVariant.sku}-${colorCode}-${item.size}`
 
                           return (
@@ -1487,7 +1530,16 @@ export default function InventoryPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('category')} *</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-semibold text-zinc-300">{t('category')} *</label>
+                      <button
+                        type="button"
+                        onClick={() => setIsQuickCategoryModalOpen(true)}
+                        className="text-[11px] text-amber-400 hover:underline font-bold"
+                      >
+                        + تصنيف جديد
+                      </button>
+                    </div>
                     <select
                       value={form.category}
                       onChange={(e) => setForm({ ...form, category: e.target.value })}
@@ -1500,7 +1552,16 @@ export default function InventoryPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-300 mb-1">{t('supplier')} *</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-semibold text-zinc-300">{t('supplier')} *</label>
+                      <button
+                        type="button"
+                        onClick={() => setIsQuickSupplierModalOpen(true)}
+                        className="text-[11px] text-amber-400 hover:underline font-bold"
+                      >
+                        + مورد جديد
+                      </button>
+                    </div>
                     <select
                       value={form.supplier}
                       onChange={(e) => setForm({ ...form, supplier: e.target.value })}
@@ -1557,7 +1618,7 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              {/* Section 2: Colors & Compressed Image Upload */}
+              {/* Section 2: Colors & Compressed Image Upload with Bilingual Search */}
               <div className="space-y-3 pt-3 border-t border-zinc-800">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider">
@@ -1568,22 +1629,13 @@ export default function InventoryPage() {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={newColorInput}
-                    onChange={(e) => setNewColorInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddColor())}
-                    placeholder="اكتب اسم لون جديد (مثال: Navy, Beige, Emerald)..."
-                    className="flex-1 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                <div className="max-w-md">
+                  <label className="block text-xs text-zinc-400 mb-1">اختر أو ابحث عن لون لإضافته للمصفوفة:</label>
+                  <ColorCombobox
+                    value=""
+                    onChange={(color) => handleAddColor(color)}
+                    placeholder="ابحث أو أضف لوناً (عربي/إنجليزي)..."
                   />
-                  <button
-                    type="button"
-                    onClick={handleAddColor}
-                    className="px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold transition"
-                  >
-                    + إضافة لون
-                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-2">
@@ -1816,12 +1868,130 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {/* Modal: Quick Edit Product Master Info */}
+      {isEditProductModalOpen && editingProduct && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-[#0c0c10] border border-amber-500/30 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <Edit className="w-4 h-4 text-amber-400" />
+                <h3 className="text-sm font-bold text-white">تعديل بيانات المنتج: {editingProduct.sku}</h3>
+              </div>
+              <button onClick={() => setIsEditProductModalOpen(false)} className="text-zinc-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditProduct} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">اسم الموديل *</label>
+                <input
+                  type="text"
+                  required
+                  value={editProductForm.model_name}
+                  onChange={(e) => setEditProductForm({ ...editProductForm, model_name: e.target.value })}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1">سعر البيع (EGP) *</label>
+                  <input
+                    type="number"
+                    step="any"
+                    required
+                    value={editProductForm.suggested_selling_price || ''}
+                    onChange={(e) => setEditProductForm({ ...editProductForm, suggested_selling_price: Number(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs font-mono font-bold text-amber-400 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1">التكلفة بالعملة الأجنبية *</label>
+                  <input
+                    type="number"
+                    step="any"
+                    required
+                    value={editProductForm.cost_foreign || ''}
+                    onChange={(e) => setEditProductForm({ ...editProductForm, cost_foreign: Number(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-zinc-300">الماركة</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsQuickBrandModalOpen(true)}
+                      className="text-[10px] text-amber-400 hover:underline"
+                    >
+                      + جديدة
+                    </button>
+                  </div>
+                  <select
+                    value={editProductForm.brand}
+                    onChange={(e) => setEditProductForm({ ...editProductForm, brand: e.target.value })}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                  >
+                    {brands.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-zinc-300">التصنيف</label>
+                    <button
+                      type="button"
+                      onClick={() => setIsQuickCategoryModalOpen(true)}
+                      className="text-[10px] text-amber-400 hover:underline"
+                    >
+                      + جديد
+                    </button>
+                  </div>
+                  <select
+                    value={editProductForm.category}
+                    onChange={(e) => setEditProductForm({ ...editProductForm, category: e.target.value })}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                  >
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 pt-3 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setIsEditProductModalOpen(false)}
+                  className="flex-1 py-2.5 bg-zinc-900 text-zinc-300 text-xs font-semibold rounded-xl"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={editProductSaving}
+                  className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs rounded-xl shadow-lg"
+                >
+                  {editProductSaving ? 'جاري الحفظ...' : 'حفظ التعديلات'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal: Quick Add Brand */}
       {isQuickBrandModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-[#0c0c10] border border-amber-500/30 rounded-3xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
-              <h3 className="text-sm font-bold text-white">إضافة ماركة جديدة سريعة</h3>
+              <h3 className="text-sm font-bold text-white">إضافة ماركة جديدة</h3>
               <button onClick={() => setIsQuickBrandModalOpen(false)} className="text-zinc-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
@@ -1860,6 +2030,104 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {/* Modal: Quick Add Category */}
+      {isQuickCategoryModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[#0c0c10] border border-amber-500/30 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+              <h3 className="text-sm font-bold text-white">إضافة تصنيف جديد</h3>
+              <button onClick={() => setIsQuickCategoryModalOpen(false)} className="text-zinc-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateQuickCategory} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">اسم التصنيف *</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={quickCategoryName}
+                  onChange={(e) => setQuickCategoryName(e.target.value)}
+                  placeholder="مثال: قمصان حرير / أحذية كلاسيك / نظارات"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickCategoryModalOpen(false)}
+                  className="flex-1 py-2 bg-zinc-900 text-zinc-300 text-xs font-semibold rounded-xl"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={quickCategorySaving}
+                  className="flex-1 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs rounded-xl shadow"
+                >
+                  {quickCategorySaving ? 'جاري الحفظ...' : 'حفظ التصنيف'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Quick Add Supplier */}
+      {isQuickSupplierModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[#0c0c10] border border-amber-500/30 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+              <h3 className="text-sm font-bold text-white">إضافة مورد جديد</h3>
+              <button onClick={() => setIsQuickSupplierModalOpen(false)} className="text-zinc-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateQuickSupplier} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">اسم المورد *</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={quickSupplierName}
+                  onChange={(e) => setQuickSupplierName(e.target.value)}
+                  placeholder="مثال: Luxury Wholesale Co."
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">رقم الهاتف (اختياري)</label>
+                <input
+                  type="text"
+                  value={quickSupplierPhone}
+                  onChange={(e) => setQuickSupplierPhone(e.target.value)}
+                  placeholder="مثال: +201001234567"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickSupplierModalOpen(false)}
+                  className="flex-1 py-2 bg-zinc-900 text-zinc-300 text-xs font-semibold rounded-xl"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={quickSupplierSaving}
+                  className="flex-1 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs rounded-xl shadow"
+                >
+                  {quickSupplierSaving ? 'جاري الحفظ...' : 'حفظ المورد'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Stock Adjustment Modal */}
       {isAdjustModalOpen && selectedVariant && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -1867,7 +2135,7 @@ export default function InventoryPage() {
             <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
               <h3 className="text-sm font-bold text-white">تعديل رصيد المخزون</h3>
               <button onClick={() => setIsAdjustModalOpen(false)} className="text-zinc-400 hover:text-white">
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 

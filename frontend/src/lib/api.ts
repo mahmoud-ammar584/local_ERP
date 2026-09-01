@@ -525,6 +525,9 @@ export const deleteExpense = (id: number) =>
 export const getExpenseCategories = () =>
   fetchJson<ExpenseCategory[] | { results: ExpenseCategory[] }>('/api/expenses/categories/')
 
+export const createExpenseCategory = (data: { name: string; description?: string }) =>
+  fetchJson<ExpenseCategory>('/api/expenses/categories/', { method: 'POST', body: JSON.stringify(data) })
+
 // Settings
 export const getStoreInfo = () =>
   fetchJson<StoreInfo>('/api/settings/store-info/')
@@ -546,6 +549,9 @@ export const createCategory = (data: { name: string }) =>
 
 export const getSuppliers = () =>
   fetchJson<Supplier[] | { results: Supplier[] }>('/api/settings/suppliers/')
+
+export const createSupplier = (data: { name: string; contact_person?: string; phone?: string; email?: string }) =>
+  fetchJson<Supplier>('/api/settings/suppliers/', { method: 'POST', body: JSON.stringify(data) })
 
 export const getPaymentMethods = () =>
   fetchJson<PaymentMethod[] | { results: PaymentMethod[] }>('/api/settings/payment-methods/')
