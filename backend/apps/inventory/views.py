@@ -45,7 +45,7 @@ class ProductViewSet(AuditLogMixin, TenantScopedViewSetMixin, viewsets.ModelView
         """
         Upload and auto-compress a product or variant image to WebP format.
         """
-        image_file = request.FILES.get('image')
+        image_file = request.FILES.get('image') or request.FILES.get('file')
         if not image_file:
             return response.Response({'error': 'No image file provided in request'}, status=400)
 
@@ -58,18 +58,94 @@ class ProductViewSet(AuditLogMixin, TenantScopedViewSetMixin, viewsets.ModelView
         if not optimized_file:
             return response.Response({'error': 'Failed to process image'}, status=400)
 
-        # Generate unique storage path
         ext = 'webp'
         unique_name = f"variants/{uuid.uuid4().hex[:12]}_{getattr(optimized_file, 'name', 'img.webp')}"
         saved_path = default_storage.save(unique_name, optimized_file)
         media_url = settings.MEDIA_URL if settings.MEDIA_URL.startswith('/') else f"/{settings.MEDIA_URL}"
         file_url = f"{media_url.rstrip('/')}/{saved_path}"
 
+        variant_id = request.data.get('variant_id')
+        product_id = request.data.get('product_id')
+        if variant_id:
+            try:
+                v = ProductVariant.objects.get(id=variant_id)
+                v.image_url = file_url
+                v.save(update_fields=['image_url'])
+            except ProductVariant.DoesNotExist:
+                pass
+        elif product_id:
+            try:
+                p = Product.objects.get(id=product_id)
+                p.image_url = file_url
+                p.save(update_fields=['image_url'])
+            except Product.DoesNotExist:
+                pass
+
         return response.Response({
             'message': 'Image uploaded and compressed successfully',
             'url': file_url,
             'path': saved_path
         })
+
+    @action(detail=True, methods=['post'], url_path='add-variant')
+    def add_variant(self, request, pk=None):
+        """
+        Add a new Color/Size variant to an existing Product.
+        """
+        product = self.get_object()
+        color = request.data.get('color', 'Standard').strip()
+        size = request.data.get('size', 'Standard').strip()
+        gender = request.data.get('gender', 'U').strip()
+        barcode = request.data.get('barcode', '').strip() or None
+        image_url = request.data.get('image_url', '').strip() or None
+        price_override = request.data.get('price_override')
+        initial_quantity = int(request.data.get('current_quantity') or request.data.get('initial_quantity') or request.data.get('quantity') or 0)
+
+        from .serializers import compute_sku_suffix
+        sku_suffix = request.data.get('sku_suffix') or compute_sku_suffix(color=color, size=size, gender=gender)
+
+        with transaction.atomic():
+            variant, created = ProductVariant.objects.get_or_create(
+                product=product,
+                sku_suffix=sku_suffix,
+                defaults={
+                    'color': color,
+                    'size': size,
+                    'gender': gender,
+                    'barcode': barcode,
+                    'image_url': image_url,
+                    'price_override': price_override
+                }
+            )
+
+            if not created:
+                if color: variant.color = color
+                if size: variant.size = size
+                if barcode: variant.barcode = barcode
+                if image_url: variant.image_url = image_url
+                if price_override is not None: variant.price_override = price_override
+                variant.save()
+
+            stock, _ = Stock.objects.get_or_create(variant=variant)
+            if created:
+                stock.current_quantity = initial_quantity
+            else:
+                stock.current_quantity += initial_quantity
+            stock.save()
+
+            log_activity(
+                user=request.user,
+                action=f"Variant added/updated: {variant.full_sku} for {product.model_name}",
+                model_name="ProductVariant",
+                object_id=variant.id,
+                details={
+                    "color": color,
+                    "size": size,
+                    "initial_quantity": initial_quantity
+                }
+            )
+
+        return response.Response(ProductVariantSerializer(variant).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'])
     def lookup(self, request):
